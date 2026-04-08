@@ -3,81 +3,86 @@ import { sendWhatsAppMessage } from "./whatsapp"
 import { handleMessage } from "./chatbot"
 
 export async function dispatchMessage({
-  phoneNumberId,
-  from,
-  message,
+    phoneNumberId,
+    from,
+    message,
 }: any) {
 
-  // 1. Tenant
-  const { data: tenant } = await supabase
-    .from("whatsapp_numbers")
-    .select("*")
-    .eq("phone_number_id", phoneNumberId)
-    .single()
+    // 1. Tenant
+    console.log("[dispatcher] phoneNumberId recibido:", phoneNumberId)
 
+    const { data: tenant, error } = await supabase
+        .from("whatsapp_numbers")
+        .select("*")
+        .eq("phone_number_id", phoneNumberId)
+        .single()
+
+    console.log("[dispatcher] tenant encontrado:", tenant, "error:", error)
 
     if (!tenant) {
-    console.log("NO TENANT - fallback test")
-    await sendWhatsAppMessage(phoneNumberId, from, "Hola fallback")
-    return
+        console.log("NO TENANT - fallback test")
+        await sendWhatsAppMessage(phoneNumberId, from, "Hola fallback")
+        return
     }
- 
 
-  // 2. Cliente
-  let { data: cliente } = await supabase
-    .from("clientes")
-    .select("*")
-    .eq("celular", from)
-    .eq("tenant_id", tenant.tenant_id)
-    .single()
 
-  if (!cliente) {
-    const { data } = await supabase
-      .from("clientes")
-      .insert({
-        celular: from,
-        tenant_id: tenant.tenant_id,
-        nombres_completos: "Cliente WhatsApp",
-      })
-      .select()
-      .single()
+    // 2. Cliente
+    let { data: cliente } = await supabase
+        .from("clientes")
+        .select("*")
+        .eq("celular", from)
+        .eq("tenant_id", tenant.tenant_id)
+        .single()
 
-    cliente = data
-  }
+    if (!cliente) {
+        const { data } = await supabase
+            .from("clientes")
+            .insert({
+                celular: from,
+                tenant_id: tenant.tenant_id,
+                nombres_completos: "Cliente WhatsApp",
+            })
+            .select()
+            .single()
 
-  // 3. Sesión
-  let { data: session } = await supabase
-    .from("chat_sesiones")
-    .select("*")
-    .eq("cliente_id", cliente.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()
+        cliente = data
+    }
 
-  if (!session) {
-    const { data } = await supabase
-      .from("chat_sesiones")
-      .insert({
-        cliente_id: cliente.id,
-        tenant_id: tenant.tenant_id,
-        contenido: { step: "inicio" },
-      })
-      .select()
-      .single()
+    // 3. Sesión
+    let { data: session } = await supabase
+        .from("chat_sesiones")
+        .select("*")
+        .eq("cliente_id", cliente.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
-    session = data
-  }
+    // Después de obtener la sesión existente:
+    const sesionExpirada = session &&
+        new Date().getTime() - new Date(session.created_at).getTime() > 24 * 60 * 60 * 1000
 
-  // 4. Chatbot
-  const response = await handleMessage({
-    tenant,
-    cliente,
-    session,
-    message,
-  })
+    if (!session || sesionExpirada) {
+        const { data } = await supabase
+            .from("chat_sesiones")
+            .insert({
+                cliente_id: cliente.id,
+                tenant_id: tenant.tenant_id,
+                contenido: { step: "inicio" },
+            })
+            .select()
+            .single()
+        session = data
+    }
+    // 4. Chatbot
+    const response = await handleMessage({
+        tenant,
+        cliente,
+        session,
+        message,
+    })
 
-  // 5. Responder
-  if (response) {
-    await sendWhatsAppMessage(phoneNumberId, from, response)
-  }
+    // 5. Responder
+    if (response) {
+        await sendWhatsAppMessage(phoneNumberId, from, response)
+    }
 }
