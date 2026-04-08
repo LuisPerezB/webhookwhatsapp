@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { dispatchMessage } from "@/lib/dispatcher"
-
+import { SpeedInsights } from "@vercel/speed-insights/next"
 // Verify token
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "your_verify_token"
 

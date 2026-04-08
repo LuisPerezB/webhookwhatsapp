@@ -15,7 +15,12 @@ export async function dispatchMessage({
     .eq("phone_number_id", phoneNumberId)
     .single()
 
-  if (!tenant) return
+    
+    if (!tenant) {
+    console.log("❌ NO TENANT FOUND", phoneNumberId)
+    return
+    }
+ 
 
   // 2. Cliente
   let { data: cliente } = await supabase
