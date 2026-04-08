@@ -15,9 +15,10 @@ export async function dispatchMessage({
     .eq("phone_number_id", phoneNumberId)
     .single()
 
-    
+
     if (!tenant) {
-    console.log("❌ NO TENANT FOUND", phoneNumberId)
+    console.log("NO TENANT - fallback test")
+    await sendWhatsAppMessage(phoneNumberId, from, "Hola fallback")
     return
     }
  
