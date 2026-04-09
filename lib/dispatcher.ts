@@ -9,7 +9,7 @@ export async function dispatchMessage({
 }: any) {
 
     // 1. Tenant
-    console.log("[dispatcher] phoneNumberId recibido:", phoneNumberId)
+    console.log("[Dispatcher] Iniciando con phoneNumberId:", phoneNumberId, "from:", from)
 
     const { data: tenant, error } = await supabase
         .from("whatsapp_numbers")
@@ -17,7 +17,7 @@ export async function dispatchMessage({
         .eq("phone_number_id", phoneNumberId)
         .single()
 
-    console.log("[dispatcher] tenant encontrado:", tenant, "error:", error)
+    console.log("[Dispatcher] Tenant:", tenant?.tenant_id ?? "NO ENCONTRADO", "Error:", tenantError?.message)
 
     if (!tenant) {
         console.log("NO TENANT - fallback test")
