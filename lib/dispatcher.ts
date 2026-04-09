@@ -9,16 +9,19 @@ export async function dispatchMessage({
 }: any) {
 
     // 1. Tenant
-    console.log("[Dispatcher] Iniciando con phoneNumberId:", phoneNumberId, "from:", from)
+    const phoneNumberIdStr = String(phoneNumberId).trim()
 
     const { data: tenant, error } = await supabase
         .from("whatsapp_numbers")
         .select("*")
-        .eq("phone_number_id", phoneNumberId)
+        .eq("phone_number_id", phoneNumberIdStr)
         .single()
 
-    //console.log("[Dispatcher] Tenant:", tenant?.tenant_id ?? "NO ENCONTRADO", "Error:", tenantError?.message)
-
+    console.log("[Dispatcher] buscando:", `'${phoneNumberIdStr}'`)
+    console.log("[Dispatcher] length:", phoneNumberIdStr.length)
+    console.log("[Dispatcher] tenant:", JSON.stringify(tenant))
+    console.log("[Dispatcher] error:", JSON.stringify(error))
+    
     if (!tenant) {
         console.log("NO TENANT - fallback test")
         await sendWhatsAppMessage(phoneNumberId, from, "Hola fallback")
