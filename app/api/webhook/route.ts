@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   const challenge = searchParams.get("hub.challenge")
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("[WhatsApp] Webhook verificado ✅")
+    //console.log("[WhatsApp] Webhook verificado ✅")
     return new NextResponse(challenge, { status: 200 })
   }
 
@@ -28,10 +28,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    console.log("[Webhook] Body recibido:", JSON.stringify(body))
+    return body
+    //console.log("[Webhook] Body recibido:", JSON.stringify(body))
 
     if (body.object !== "whatsapp_business_account") {
-      console.log("[Webhook] Objeto no válido:", body.object)
+      //console.log("[Webhook] Objeto no válido:", body.object)
       return NextResponse.json({ error: "Evento no válido" }, { status: 400 })
     }
 
@@ -40,12 +41,12 @@ export async function POST(request: NextRequest) {
         const value = change.value
         const phoneNumberId = value?.metadata?.phone_number_id
 
-        console.log("[Webhook] phoneNumberId:", phoneNumberId)
-        console.log("[Webhook] value.messages:", JSON.stringify(value.messages))
+        //console.log("[Webhook] phoneNumberId:", phoneNumberId)
+        //console.log("[Webhook] value.messages:", JSON.stringify(value.messages))
 
         if (value.messages) {
           for (const message of value.messages) {
-            console.log("[Webhook] Procesando mensaje de:", message.from, "tipo:", message.type)
+            //console.log("[Webhook] Procesando mensaje de:", message.from, "tipo:", message.type)
             await dispatchMessage({ phoneNumberId, from: message.from, message })
           }
         }

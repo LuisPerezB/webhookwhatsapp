@@ -17,7 +17,7 @@ export async function dispatchMessage({
         .eq("phone_number_id", phoneNumberId)
         .single()
 
-    console.log("[Dispatcher] Tenant:", tenant?.tenant_id ?? "NO ENCONTRADO", "Error:", tenantError?.message)
+    //console.log("[Dispatcher] Tenant:", tenant?.tenant_id ?? "NO ENCONTRADO", "Error:", tenantError?.message)
 
     if (!tenant) {
         console.log("NO TENANT - fallback test")
