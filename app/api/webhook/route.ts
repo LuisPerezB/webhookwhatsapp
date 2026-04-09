@@ -28,7 +28,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    return body
     //console.log("[Webhook] Body recibido:", JSON.stringify(body))
 
     if (body.object !== "whatsapp_business_account") {
