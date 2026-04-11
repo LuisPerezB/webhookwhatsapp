@@ -2,7 +2,7 @@ export async function sendWhatsAppMessage(
     phoneNumberId: string,
     to: string,
     text: string
-) {
+): Promise<string | null> {
     const url = `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`
 
     const res = await fetch(url, {
@@ -19,15 +19,14 @@ export async function sendWhatsAppMessage(
         }),
     })
 
-
     const data = await res.json()
-    console.log("[WhatsApp] Respuesta Meta:", res.status, JSON.stringify(data))
 
     if (!res.ok) {
         console.error("[WhatsApp] Error enviando mensaje:", JSON.stringify(data))
         throw new Error(`WhatsApp API error: ${res.status}`)
     }
 
-    console.log("[WhatsApp] Mensaje enviado OK:", data.messages?.[0]?.id)
-    return data
+    const messageId = data.messages?.[0]?.id ?? null
+    console.log("[WhatsApp] Mensaje enviado OK:", messageId)
+    return messageId
 }
