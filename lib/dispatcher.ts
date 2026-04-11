@@ -16,20 +16,54 @@ export async function dispatchMessage({
     // =========================
     // 1. TENANT
     // =========================
-    const { data: whatsappNumber } = await supabase
+    // 1. Buscar whatsapp number
+    const { data: whatsappNumber, error: wnError } = await supabase
         .from("whatsapp_numbers")
-        .select("*, tenants(*), tenant_config(config)")
+        .select("*")
         .eq("phone_number_id", phoneNumberIdStr)
         .is("deleted_at", null)
         .single()
 
+    console.log("[Dispatcher] whatsappNumber:", JSON.stringify(whatsappNumber))
+    console.log("[Dispatcher] error:", JSON.stringify(wnError))
+
     if (!whatsappNumber) {
-        console.log("[Dispatcher] Tenant no encontrado para:", phoneNumberIdStr)
+        console.log("[Dispatcher] Número no encontrado:", phoneNumberIdStr)
         return
     }
 
-    const tenant = whatsappNumber.tenants
-    const config = whatsappNumber.tenant_config?.config ?? {}
+    // 2. Buscar tenant
+    const { data: tenant, error: tenantError } = await supabase
+        .from("tenants")
+        .select("*")
+        .eq("id", whatsappNumber.tenant_id)
+        .is("deleted_at", null)
+        .single()
+
+    console.log("[Dispatcher] tenant:", JSON.stringify(tenant))
+    console.log("[Dispatcher] tenantError:", JSON.stringify(tenantError))
+
+    if (!tenant) {
+        console.log("[Dispatcher] Tenant no encontrado para id:", whatsappNumber.tenant_id)
+        return
+    }
+
+    // 3. Buscar config
+    const { data: configData } = await supabase
+        .from("tenant_config")
+        .select("config")
+        .eq("tenant_id", tenant.id)
+        .is("deleted_at", null)
+        .maybeSingle()
+
+    const config = configData?.config ?? {
+        dias_max_cita: 7,
+        saludo: "Hola 👋 ¿En qué puedo ayudarte?",
+        modo_global: "automatico",
+        bot_control_numbers: [],
+        notificar_lead_nuevo: true,
+        notificar_cita_ativa: true,
+    }
 
     // =========================
     // 2. CLIENTE GLOBAL
