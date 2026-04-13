@@ -297,13 +297,19 @@ export async function handleMessage({
         let ciudadId: number | null = null
         let ciudadNombre = ""
 
+        // Usuario seleccionó "Otra ciudad" de la lista
+        if (btnId === "ciudad_otra") {
+            await updateSession(session.id, { ...state, step: "filtro_ciudad_texto" })
+            return "Escribe el nombre de la ciudad que buscas:"
+        }
+
         if (btnId.startsWith("ciudad_")) {
             ciudadId = parseInt(btnId.replace("ciudad_", ""))
             const { data: c } = await supabase
                 .from("ciudades").select("nombre").eq("id", ciudadId).single()
             ciudadNombre = c?.nombre || ""
         } else if (text) {
-            // Cargar todas las ciudades y hacer búsqueda fuzzy
+            // Búsqueda fuzzy con fuse.js
             const { data: todasCiudades } = await supabase
                 .from("ciudades")
                 .select("id, nombre")
@@ -314,12 +320,9 @@ export async function handleMessage({
                 const Fuse = (await import("fuse.js")).default
                 const fuse = new Fuse(todasCiudades, {
                     keys: ["nombre"],
-                    threshold: 0.4, // 0 = exacto, 1 = cualquier cosa. 0.4 ≈ 75% coincidencia
-                    includeScore: true,
+                    threshold: 0.4,
                 })
-
                 const resultados = fuse.search(text)
-
                 if (resultados.length > 0) {
                     const mejor = resultados[0].item as any
                     ciudadId = mejor.id
@@ -329,7 +332,43 @@ export async function handleMessage({
         }
 
         if (!ciudadId) {
-            return "No encontré esa ciudad. Intenta escribir el nombre nuevamente:\n\n_Ej: Guayaquil, Quito, Cuenca_"
+            return "No encontre esa ciudad. Escribe el nombre nuevamente:"
+        }
+
+        await updateSession(session.id, {
+            ...state, step: "filtro_sector",
+            ciudad_id: ciudadId, ciudad_nombre: ciudadNombre
+        })
+        return await listaSectores(ciudadId, ciudadNombre)
+    }
+
+    // Paso extra cuando escribe ciudad manualmente después de "Otra ciudad"
+    if (state.step === "filtro_ciudad_texto") {
+        const { data: todasCiudades } = await supabase
+            .from("ciudades")
+            .select("id, nombre")
+            .is("deleted_at", null)
+            .order("nombre")
+
+        let ciudadId: number | null = null
+        let ciudadNombre = ""
+
+        if (todasCiudades?.length) {
+            const Fuse = (await import("fuse.js")).default
+            const fuse = new Fuse(todasCiudades, {
+                keys: ["nombre"],
+                threshold: 0.4,
+            })
+            const resultados = fuse.search(text)
+            if (resultados.length > 0) {
+                const mejor = resultados[0].item as any
+                ciudadId = mejor.id
+                ciudadNombre = mejor.nombre
+            }
+        }
+
+        if (!ciudadId) {
+            return "No encontre esa ciudad. Intenta de nuevo:"
         }
 
         await updateSession(session.id, {
@@ -1035,48 +1074,48 @@ async function listaTipoPropiedad(): Promise<Respuesta> {
 async function listaCiudades(): Promise<Respuesta> {
     const { data } = await supabase
         .from("ciudades")
-        .select("id, nombre, provincia_id")
+        .select("id, nombre, provincia:provincia_id(nombre)")
         .is("deleted_at", null)
         .order("nombre")
-    // Sin .limit()
 
-    if (!data?.length) return "Escribe el nombre de la ciudad donde buscas:"
+    if (!data?.length) {
+        return "Escribe el nombre de la ciudad donde buscas:\n\nEj: Guayaquil, Quito, Cuenca"
+    }
 
-    const provinciaIds = [...new Set(data.map(c => c.provincia_id).filter(Boolean))]
-    const { data: provincias } = await supabase
-        .from("provincias").select("id, nombre").in("id", provinciaIds)
-    const provMap: Record<number, string> = {}
-    provincias?.forEach((p: any) => { provMap[p.id] = p.nombre })
+    // WhatsApp lista: máximo 10 rows total en la práctica
+    // Mostrar las más relevantes + instrucción de escribir
+    const principales = [
+        "Guayaquil", "Quito", "Cuenca", "Manta", "Ambato",
+        "Machala", "Santo Domingo", "Ibarra", "Loja", "Portoviejo"
+    ]
 
-    // WhatsApp lista acepta máximo 10 rows por sección
-    // Dividir en secciones por provincia
-    const porProvincia: Record<string, any[]> = {}
-    data.forEach(c => {
-        const prov = provMap[c.provincia_id] || "Otras"
-        if (!porProvincia[prov]) porProvincia[prov] = []
-        porProvincia[prov].push(c)
-    })
-
-    const sections = Object.entries(porProvincia)
-        .slice(0, 5) // máximo 5 secciones en WhatsApp
-        .map(([prov, ciudades]) => ({
-            title: prov.slice(0, 24),
-            rows: ciudades.slice(0, 10).map(c => ({
-                id: `ciudad_${c.id}`,
-                title: c.nombre,
-            }))
+    const rows = data
+        .filter((c: any) => principales.includes(c.nombre))
+        .slice(0, 9) // máximo 9 + 1 fijo de "Otra ciudad"
+        .map((c: any) => ({
+            id: `ciudad_${c.id}`,
+            title: c.nombre,
+            description: (c.provincia as any)?.nombre || ""
         }))
+
+    rows.push({
+        id: "ciudad_otra",
+        title: "Otra ciudad",
+        description: "Escribe el nombre a continuacion"
+    })
 
     return {
         tipo: "list",
         payload: {
-            body: "¿En qué ciudad buscas?\n\nO escribe el nombre directamente aunque tenga errores:",
+            body: "Selecciona la ciudad o escribe el nombre directamente si no esta en la lista:",
             buttonText: "Ver ciudades",
-            sections
+            sections: [{
+                title: "Ciudades principales",
+                rows
+            }]
         }
     }
 }
-
 async function listaSectores(ciudadId: number, ciudadNombre: string): Promise<Respuesta> {
     const { data } = await supabase
         .from("sectores")
