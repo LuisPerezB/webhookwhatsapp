@@ -250,18 +250,20 @@ export async function handleMessage({
     }
 
     // FLUJO FILTROS
+    // filtro_tipo — sin negrita ni emojis en el body
     if (state.step === "filtro_tipo") {
         const tipo = resolverTipo(btnId || text)
         if (!tipo) return await listaTipoPropiedad()
 
         await updateSession(session.id, { ...state, step: "filtro_operacion", tipo })
+
         return {
             tipo: "buttons",
             payload: {
-                body: `${emojiTipo(tipo)} *${tipo.charAt(0).toUpperCase() + tipo.slice(1)}*\n\n¿Para qué operación?`,
+                body: `${tipo.charAt(0).toUpperCase() + tipo.slice(1)}\n\n¿Para que operacion buscas?`,
                 buttons: [
-                    { id: "op_venta", title: "🏷️ Comprar" },
-                    { id: "op_alquiler", title: "🔑 Alquilar" },
+                    { id: "op_venta", title: "1.Comprar" },
+                    { id: "op_alquiler", title: "2.Alquilar" },
                 ]
             }
         }
@@ -280,8 +282,8 @@ export async function handleMessage({
                 payload: {
                     body: "¿Para qué operación?",
                     buttons: [
-                        { id: "op_venta", title: "🏷️ Comprar" },
-                        { id: "op_alquiler", title: "🔑 Alquilar" },
+                        { id: "op_venta", title: "1.Comprar" },
+                        { id: "op_alquiler", title: "2.Alquilar" },
                     ]
                 }
             }
@@ -873,8 +875,9 @@ async function obtenerUbicacion(
     }
 }
 
+// menuPrincipal — solo emojis en el menú principal que sí tienen sentido visual
 async function menuPrincipal(tenant: any, cliente: any, config: any): Promise<Respuesta> {
-    const saludo = config?.saludo || `Hola 👋 Bienvenido a ${tenant.nombre}`
+    const saludo = config?.saludo || `Bienvenido a ${tenant.nombre}`
     const permiteProyectos = config?.permite_proyectos !== false
     const permiteAsesor = config?.permite_asesor !== false
 
@@ -900,16 +903,16 @@ async function menuPrincipal(tenant: any, cliente: any, config: any): Promise<Re
             weekday: "long", day: "numeric", month: "long",
             hour: "2-digit", minute: "2-digit"
         })
-        bodyText += `\n\n📅 Tienes una cita para *${nombre}* el ${fecha}.`
+        bodyText += `\n\nTienes una cita para ${nombre} el ${fecha}.`
     }
 
-    bodyText += "\n\n¿En qué puedo ayudarte?"
+    bodyText += "\n\n¿En que puedo ayudarte?"
 
     const buttons: { id: string; title: string }[] = [
-        { id: "btn_propiedades", title: "🏠 Ver propiedades" },
+        { id: "btn_propiedades", title: "Ver propiedades" },
     ]
-    if (permiteProyectos) buttons.push({ id: "btn_proyectos", title: "🏗️ Proyectos" })
-    if (permiteAsesor) buttons.push({ id: "btn_asesor", title: "👤 Hablar con asesor" })
+    if (permiteProyectos) buttons.push({ id: "btn_proyectos", title: "Ver proyectos" })
+    if (permiteAsesor) buttons.push({ id: "btn_asesor", title: "Hablar con asesor" })
 
     return {
         tipo: "buttons",
@@ -1008,20 +1011,21 @@ async function listarUnidadesProyecto(proyectoId: number): Promise<Respuesta> {
     }
 }
 
+// listaTipoPropiedad — sin emojis en los rows
 async function listaTipoPropiedad(): Promise<Respuesta> {
     return {
         tipo: "list",
         payload: {
-            body: "¿Qué tipo de propiedad buscas?",
-            buttonText: "Seleccionar tipo",
+            body: "Selecciona el tipo de propiedad:",
+            buttonText: "Ver tipos",
             sections: [{
-                title: "Tipos de propiedad",
+                title: "Tipos",
                 rows: [
-                    { id: "tipo_casa", title: "🏠 Casa" },
-                    { id: "tipo_departamento", title: "🏢 Departamento" },
-                    { id: "tipo_terreno", title: "🌿 Terreno" },
-                    { id: "tipo_comercial", title: "🏪 Local Comercial" },
-                    { id: "tipo_oficina", title: "💼 Oficina" },
+                    { id: "tipo_casa", title: "Casa" },
+                    { id: "tipo_departamento", title: "Departamento" },
+                    { id: "tipo_terreno", title: "Terreno" },
+                    { id: "tipo_comercial", title: "Local comercial" },
+                    { id: "tipo_oficina", title: "Oficina" },
                 ]
             }]
         }
@@ -1247,7 +1251,7 @@ async function mostrarHorariosPropiedad(
                     title: new Date(h.fecha + "T00:00:00").toLocaleDateString("es-EC", {
                         weekday: "short", day: "numeric", month: "short"
                     }),
-                    description: `🕐 ${h.hora_inicio} - ${h.hora_fin}`
+                    description: `${h.hora_inicio} - ${h.hora_fin}`
                 }))
             }]
         }
@@ -1370,40 +1374,65 @@ function formatearDetallePropiedad(p: any): string {
     const extra = p.extras || {}
     const pago = Array.isArray(p.tipo_pago) ? p.tipo_pago.join(", ") : ""
 
-    let res = ""
-    res += `💰 $${Number(p.precio).toLocaleString("es-EC")}`
-    if (p.precio_negociable) res += " (negociable)"
-    res += "\n"
-    if (dim.m2_construccion) res += `📐 ${dim.m2_construccion}m² construcción\n`
-    if (dim.m2_terreno) res += `📐 ${dim.m2_terreno}m² terreno\n`
-    if (amb.habitaciones) res += `🛏 ${amb.habitaciones} habitaciones\n`
-    if (amb.banos) res += `🚿 ${amb.banos} baños\n`
-    if (est.estacionamientos) res += `🚗 ${est.estacionamientos} estacionamiento(s)\n`
-    if (ext.patio) res += `🌿 Patio\n`
-    if (ext.jardin) res += `🌳 Jardín\n`
-    if (ext.piscina) res += `🏊 Piscina\n`
-    if (extra.amoblado) res += `🪑 Amoblado\n`
-    if (pago) res += `💳 Acepta: ${pago}\n`
-    res += `\n${p.descripcion || ""}`
-    return res.trim()
+    const lineas: string[] = []
+
+    if (p.precio) lineas.push(`Precio: $${Number(p.precio).toLocaleString("es-EC")}${p.precio_negociable ? " (negociable)" : ""}`)
+    if (dim.m2_construccion) lineas.push(`Construccion: ${dim.m2_construccion}m2`)
+    if (dim.m2_terreno) lineas.push(`Terreno: ${dim.m2_terreno}m2`)
+    if (dim.m2_total) lineas.push(`Total: ${dim.m2_total}m2`)
+    if (amb.habitaciones) lineas.push(`Habitaciones: ${amb.habitaciones}`)
+    if (amb.banos) lineas.push(`Banos: ${amb.banos}`)
+    if (amb.medios_banos) lineas.push(`Medios banos: ${amb.medios_banos}`)
+    if (est.estacionamientos) lineas.push(`Estacionamientos: ${est.estacionamientos}`)
+    if (est.cubierto) lineas.push(`Estacionamiento cubierto`)
+    if (est.bodega) lineas.push(`Bodega incluida`)
+
+    const exterioresActivos = [
+        ext.patio && "Patio",
+        ext.jardin && "Jardin",
+        ext.terraza && "Terraza",
+        ext.balcon && "Balcon",
+        ext.piscina && "Piscina",
+        ext.bbq && "BBQ",
+    ].filter(Boolean)
+    if (exterioresActivos.length) lineas.push(`Exteriores: ${exterioresActivos.join(", ")}`)
+
+    const extrasActivos = [
+        extra.amoblado && "Amoblado",
+        extra.ascensor && "Ascensor",
+        extra.generador && "Generador",
+        extra.cisterna && "Cisterna",
+        extra.panel_solar && "Panel solar",
+    ].filter(Boolean)
+    if (extrasActivos.length) lineas.push(`Adicionales: ${extrasActivos.join(", ")}`)
+
+    if (pago) lineas.push(`Forma de pago: ${pago}`)
+
+    if (p.descripcion) lineas.push(`\n${p.descripcion}`)
+
+    return lineas.map((l, i) => l.startsWith("\n") ? l : `${i + 1}. ${l}`).join("\n")
 }
 
 function formatearDetalleProyecto(p: any): string {
     const amenidades = Array.isArray(p.amenidades) ? p.amenidades.join(", ") : ""
     const pago = Array.isArray(p.tipo_pago) ? p.tipo_pago.join(", ") : ""
 
-    let res = ""
-    if (p.precio_desde) res += `💰 Desde $${Number(p.precio_desde).toLocaleString("es-EC")}`
-    if (p.precio_hasta) res += ` hasta $${Number(p.precio_hasta).toLocaleString("es-EC")}`
-    res += "\n"
-    if (p.fecha_entrega_estimada) {
-        res += `📆 Entrega: ${new Date(p.fecha_entrega_estimada).toLocaleDateString("es-EC")}\n`
+    const lineas: string[] = []
+
+    if (p.precio_desde) {
+        const precio = `Precio: desde $${Number(p.precio_desde).toLocaleString("es-EC")}` +
+            (p.precio_hasta ? ` hasta $${Number(p.precio_hasta).toLocaleString("es-EC")}` : "")
+        lineas.push(precio)
     }
-    if (amenidades) res += `✨ ${amenidades}\n`
-    if (pago) res += `💳 Acepta: ${pago}\n`
-    res += `\n${p.descripcion || ""}`
-    if (p.slogan) res += `\n_${p.slogan}_`
-    return res.trim()
+    if (p.fecha_entrega_estimada) {
+        lineas.push(`Entrega estimada: ${new Date(p.fecha_entrega_estimada).toLocaleDateString("es-EC")}`)
+    }
+    if (amenidades) lineas.push(`Amenidades: ${amenidades}`)
+    if (pago) lineas.push(`Forma de pago: ${pago}`)
+    if (p.descripcion) lineas.push(`\n${p.descripcion}`)
+    if (p.slogan) lineas.push(`"${p.slogan}"`)
+
+    return lineas.map((l, i) => l.startsWith("\n") || l.startsWith('"') ? l : `${i + 1}. ${l}`).join("\n")
 }
 
 function resolverTipo(input: string): string | null {
