@@ -131,7 +131,7 @@ export async function handleMessage({
     }
 
     if (text === "bot" || text === "menu" || btnId === "menu_principal") {
-        await updateSession(session.id, { step: "inicio" })
+        await updateSession(session.id, { step: "menu_principal" }) // ← forzar step
         return await menuPrincipal(tenant, cliente, config)
     }
 
@@ -183,7 +183,13 @@ export async function handleMessage({
     }
 
     // MENÚ PRINCIPAL
-    if (state.step === "menu_principal") {
+    if (state.step === "menu_principal" || btnId === "menu_principal") {
+        // Forzar step correcto
+        if (state.step !== "menu_principal") {
+            await updateSession(session.id, { step: "menu_principal" })
+            state = { step: "menu_principal" }
+        }
+
         if (btnId === "btn_propiedades" || text === "1" || text.includes("propiedad")) {
             await updateSession(session.id, { step: "busqueda_texto" })
             return "¿Qué estás buscando? Puedes describirlo directamente:\n\n_Ej: \"casa con 3 habitaciones en el norte de Guayaquil\"_\n_Ej: \"departamento para alquilar en Quito\"_\n\nO escribe *filtros* para buscar paso a paso."
@@ -200,6 +206,7 @@ export async function handleMessage({
             return `Un agente te atenderá en breve. ⏳\n\nEn ${tiempoManual} minutos el asistente se reactivará automáticamente.`
         }
 
+        // Si no coincide nada, mostrar menú de nuevo
         return await menuPrincipal(tenant, cliente, config)
     }
 
@@ -263,9 +270,9 @@ export async function handleMessage({
     if (state.step === "filtro_operacion") {
         const operacion = btnId === "op_venta" ? "venta"
             : btnId === "op_alquiler" ? "alquiler"
-            : text.includes("comprar") || text.includes("venta") ? "venta"
-            : text.includes("alquil") || text.includes("arrend") ? "alquiler"
-            : null
+                : text.includes("comprar") || text.includes("venta") ? "venta"
+                    : text.includes("alquil") || text.includes("arrend") ? "alquiler"
+                        : null
 
         if (!operacion) {
             return {
@@ -293,17 +300,35 @@ export async function handleMessage({
             const { data: c } = await supabase
                 .from("ciudades").select("nombre").eq("id", ciudadId).single()
             ciudadNombre = c?.nombre || ""
-        } else {
-            const { data: c } = await supabase
+        } else if (text) {
+            // Cargar todas las ciudades y hacer búsqueda fuzzy
+            const { data: todasCiudades } = await supabase
                 .from("ciudades")
                 .select("id, nombre")
-                .ilike("nombre", `%${text}%`)
-                .limit(1)
-                .maybeSingle()
-            if (c) { ciudadId = c.id; ciudadNombre = c.nombre }
+                .is("deleted_at", null)
+                .order("nombre")
+
+            if (todasCiudades?.length) {
+                const Fuse = (await import("fuse.js")).default
+                const fuse = new Fuse(todasCiudades, {
+                    keys: ["nombre"],
+                    threshold: 0.4, // 0 = exacto, 1 = cualquier cosa. 0.4 ≈ 75% coincidencia
+                    includeScore: true,
+                })
+
+                const resultados = fuse.search(text)
+
+                if (resultados.length > 0) {
+                    const mejor = resultados[0].item as any
+                    ciudadId = mejor.id
+                    ciudadNombre = mejor.nombre
+                }
+            }
         }
 
-        if (!ciudadId) return "No encontré esa ciudad. Escribe el nombre de la ciudad:"
+        if (!ciudadId) {
+            return "No encontré esa ciudad. Intenta escribir el nombre nuevamente:\n\n_Ej: Guayaquil, Quito, Cuenca_"
+        }
 
         await updateSession(session.id, {
             ...state, step: "filtro_sector",
@@ -408,7 +433,7 @@ export async function handleMessage({
                 const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
                 if (url && phoneNumberId && from) {
                     await sendWhatsAppImage(phoneNumberId, from, url, prop.nombre)
-                        .catch(() => {}) // No bloquear si falla la foto
+                        .catch(() => { }) // No bloquear si falla la foto
                 }
             }
 
@@ -487,7 +512,7 @@ export async function handleMessage({
                 const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
                 if (url && phoneNumberId && from) {
                     await sendWhatsAppImage(phoneNumberId, from, url, proy.nombre)
-                        .catch(() => {})
+                        .catch(() => { })
                 }
             }
 
@@ -509,7 +534,112 @@ export async function handleMessage({
         return await listarProyectos(tenant.id)
     }
 
+    // Después del bloque de "ver_proyectos", antes de "ver_unidades_proyecto"
+    if (state.step === "detalle_proyecto") {
+        if (btnId.startsWith("ver_unidades_")) {
+            const proyId = parseInt(btnId.replace("ver_unidades_", ""))
+            await updateSession(session.id, {
+                ...state,
+                step: "ver_unidades_proyecto",
+                proyecto_id: proyId
+            })
+            return await listarUnidadesProyecto(proyId)
+        }
+
+        if (btnId.startsWith("reservar_proy_")) {
+            const proyId = parseInt(btnId.replace("reservar_proy_", ""))
+            if (!cliente.verificado) {
+                await updateSession(session.id, { step: "solicitar_cedula", proyecto_id: proyId })
+                return solicitarCedula()
+            }
+            await updateSession(session.id, { step: "agendar_proyecto", proyecto_id: proyId })
+            return await mostrarHorariosProyecto(proyId, config?.dias_max_cita ?? 7, session.id)
+        }
+
+        if (btnId === "btn_volver" || text === "0") {
+            await updateSession(session.id, { step: "ver_proyectos" })
+            return await listarProyectos(tenant.id)
+        }
+    }
+
+
     if (state.step === "ver_unidades_proyecto") {
+        // Si selecciona una unidad
+        if (btnId.startsWith("prop_")) {
+            const propiedadId = parseInt(btnId.replace("prop_", ""))
+
+            const { data: prop } = await supabase
+                .from("propiedades")
+                .select("*, ciudad_id, sector_id")
+                .eq("id", propiedadId)
+                .single()
+
+            if (!prop) return "Propiedad no encontrada."
+
+            await supabase
+                .from("propiedades")
+                .update({ total_consultas: (prop.total_consultas || 0) + 1 })
+                .eq("id", propiedadId)
+
+            await updateSession(session.id, {
+                ...state,
+                step: "detalle_propiedad",
+                propiedad_id: propiedadId
+            })
+
+            const fotos = prop.fotos as any[]
+            if (fotos?.length > 0) {
+                const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
+                if (url && phoneNumberId && from) {
+                    await sendWhatsAppImage(phoneNumberId, from, url, prop.nombre).catch(() => { })
+                }
+            }
+
+            const { ciudadNombre, sectorNombre } = await obtenerUbicacion(prop.ciudad_id, prop.sector_id)
+
+            return {
+                tipo: "buttons",
+                payload: {
+                    header: prop.nombre,
+                    body: formatearDetallePropiedad(prop),
+                    buttons: [
+                        { id: `reservar_prop_${propiedadId}`, title: "📅 Reservar visita" },
+                        { id: `ver_web_prop_${propiedadId}`, title: "🌐 Ver en web" },
+                        { id: "btn_volver", title: "↩️ Volver" },
+                    ],
+                    footer: `${ciudadNombre} · ${sectorNombre}`
+                }
+            }
+        }
+
+        // Volver al proyecto
+        if (btnId === "btn_volver" || text === "0") {
+            await updateSession(session.id, { ...state, step: "detalle_proyecto" })
+            const { data: proy } = await supabase
+                .from("proyectos")
+                .select("*, ciudad_id, sector_id")
+                .eq("id", state.proyecto_id)
+                .single()
+
+            if (!proy) return await listarProyectos(tenant.id)
+
+            const { ciudadNombre } = await obtenerUbicacion(proy.ciudad_id, proy.sector_id)
+
+            return {
+                tipo: "buttons",
+                payload: {
+                    header: proy.nombre,
+                    body: formatearDetalleProyecto(proy),
+                    buttons: [
+                        { id: `ver_unidades_${state.proyecto_id}`, title: "🏠 Ver unidades" },
+                        { id: `reservar_proy_${state.proyecto_id}`, title: "📅 Reservar visita" },
+                        { id: "btn_volver", title: "↩️ Volver" },
+                    ],
+                    footer: ciudadNombre
+                }
+            }
+        }
+
         return await listarUnidadesProyecto(state.proyecto_id)
     }
 
@@ -798,7 +928,7 @@ async function listarProyectos(tenantId: number, ciudadId?: number): Promise<Res
         .eq("tenant_id", tenantId)
         .eq("estado", "activo")
         .is("deleted_at", null)
-        .limit(8)
+        .limit(10)
 
     if (ciudadId) query = query.eq("ciudad_id", ciudadId)
 
@@ -818,33 +948,15 @@ async function listarProyectos(tenantId: number, ciudadId?: number): Promise<Res
     }
 
     const ciudadIds = [...new Set(data.map(p => p.ciudad_id).filter(Boolean))]
-    const sectorIds = [...new Set(data.map((p: any) => p.sector_id).filter(Boolean))]
-
-    const { data: ciudades } = await supabase.from("ciudades").select("id, nombre").in("id", ciudadIds)
-    const { data: sectores } = await supabase.from("sectores").select("id, nombre").in("id", sectorIds)
-
+    const { data: ciudades } = await supabase
+        .from("ciudades").select("id, nombre").in("id", ciudadIds)
     const ciudadMap: Record<number, string> = {}
-    const sectorMap: Record<number, string> = {}
     ciudades?.forEach((c: any) => { ciudadMap[c.id] = c.nombre })
-    sectores?.forEach((s: any) => { sectorMap[s.id] = s.nombre })
-
-    if (data.length <= 3) {
-        return {
-            tipo: "buttons",
-            payload: {
-                header: "🏗️ Proyectos disponibles",
-                body: data.map((p, i) =>
-                    `${i + 1}. *${p.nombre}*\n   📍 ${sectorMap[(p as any).sector_id] || ""}, ${ciudadMap[p.ciudad_id] || ""}\n   💰 Desde $${Number(p.precio_desde || 0).toLocaleString("es-EC")}`
-                ).join("\n\n"),
-                buttons: data.map(p => ({ id: `proy_${p.id}`, title: p.nombre.slice(0, 20) }))
-            }
-        }
-    }
 
     return {
         tipo: "list",
         payload: {
-            header: "🏗️ Proyectos",
+            header: "🏗️ Proyectos disponibles",
             body: "Selecciona el proyecto que te interesa:",
             buttonText: "Ver proyectos",
             sections: [{
@@ -852,7 +964,10 @@ async function listarProyectos(tenantId: number, ciudadId?: number): Promise<Res
                 rows: data.map(p => ({
                     id: `proy_${p.id}`,
                     title: p.nombre.slice(0, 24),
-                    description: `${ciudadMap[p.ciudad_id] || ""} · Desde $${Number(p.precio_desde || 0).toLocaleString("es-EC")}`
+                    description: [
+                        ciudadMap[p.ciudad_id] ? `📍 ${ciudadMap[p.ciudad_id]}` : null,
+                        p.precio_desde ? `💰 Desde $${Number(p.precio_desde).toLocaleString("es-EC")}` : null,
+                    ].filter(Boolean).join(" · ")
                 }))
             }]
         }
@@ -919,7 +1034,7 @@ async function listaCiudades(): Promise<Respuesta> {
         .select("id, nombre, provincia_id")
         .is("deleted_at", null)
         .order("nombre")
-        .limit(10)
+    // Sin .limit()
 
     if (!data?.length) return "Escribe el nombre de la ciudad donde buscas:"
 
@@ -929,19 +1044,31 @@ async function listaCiudades(): Promise<Respuesta> {
     const provMap: Record<number, string> = {}
     provincias?.forEach((p: any) => { provMap[p.id] = p.nombre })
 
+    // WhatsApp lista acepta máximo 10 rows por sección
+    // Dividir en secciones por provincia
+    const porProvincia: Record<string, any[]> = {}
+    data.forEach(c => {
+        const prov = provMap[c.provincia_id] || "Otras"
+        if (!porProvincia[prov]) porProvincia[prov] = []
+        porProvincia[prov].push(c)
+    })
+
+    const sections = Object.entries(porProvincia)
+        .slice(0, 5) // máximo 5 secciones en WhatsApp
+        .map(([prov, ciudades]) => ({
+            title: prov.slice(0, 24),
+            rows: ciudades.slice(0, 10).map(c => ({
+                id: `ciudad_${c.id}`,
+                title: c.nombre,
+            }))
+        }))
+
     return {
         tipo: "list",
         payload: {
-            body: "¿En qué ciudad buscas?",
-            buttonText: "Seleccionar ciudad",
-            sections: [{
-                title: "Ciudades",
-                rows: data.map(c => ({
-                    id: `ciudad_${c.id}`,
-                    title: c.nombre,
-                    description: provMap[c.provincia_id] || ""
-                }))
-            }]
+            body: "¿En qué ciudad buscas?\n\nO escribe el nombre directamente aunque tenga errores:",
+            buttonText: "Ver ciudades",
+            sections
         }
     }
 }
