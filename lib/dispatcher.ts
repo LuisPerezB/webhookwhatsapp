@@ -3,6 +3,7 @@ import {
     sendWhatsAppMessage,
     sendWhatsAppButtons,
     sendWhatsAppList,
+    sendWhatsAppImage,
     extraerTextoMensaje,
 } from "./whatsapp"
 import { handleMessage, handleLink } from "./chatbot"
@@ -18,9 +19,7 @@ export async function dispatchMessage({
 }) {
     const phoneNumberIdStr = String(phoneNumberId).trim()
 
-    // =========================
     // 1. WHATSAPP NUMBER
-    // =========================
     const { data: whatsappNumber } = await supabase
         .from("whatsapp_numbers")
         .select("*")
@@ -34,9 +33,7 @@ export async function dispatchMessage({
         return
     }
 
-    // =========================
-    // 2. TENANT — activo
-    // =========================
+    // 2. TENANT
     const { data: tenant } = await supabase
         .from("tenants")
         .select("*")
@@ -67,9 +64,7 @@ export async function dispatchMessage({
         return
     }
 
-    // =========================
     // 3. CONFIG
-    // =========================
     const { data: configData } = await supabase
         .from("tenant_config")
         .select("config")
@@ -84,9 +79,7 @@ export async function dispatchMessage({
         return
     }
 
-    // =========================
     // 4. CLIENTE GLOBAL
-    // =========================
     let { data: cliente } = await supabase
         .from("clientes")
         .select("*")
@@ -113,9 +106,7 @@ export async function dispatchMessage({
         return
     }
 
-    // =========================
     // 5. RELACIÓN CLIENTE - TENANT
-    // =========================
     let { data: relacion } = await supabase
         .from("cliente_tenants")
         .select("*")
@@ -129,10 +120,7 @@ export async function dispatchMessage({
     if (!relacion) {
         const { data } = await supabase
             .from("cliente_tenants")
-            .insert({
-                cliente_id: cliente.id,
-                tenant_id: tenant.id,
-            })
+            .insert({ cliente_id: cliente.id, tenant_id: tenant.id })
             .select()
             .single()
         relacion = data
@@ -143,23 +131,17 @@ export async function dispatchMessage({
             .eq("id", relacion.id)
     }
 
-    // =========================
-    // 6. EXTRAER TEXTO DEL MENSAJE
-    // =========================
+    // 6. EXTRAER TEXTO
     const { texto: textoMensaje, buttonId } = extraerTextoMensaje(message)
 
-    // =========================
-    // =========================
-    // 7. DETECTAR LINK DEL SISTEMA
-    // =========================
+    // 7. DETECTAR LINK
     const textoCompleto = message.text?.body || textoMensaje || ""
     const linkPattern = /(propiedad|proyecto|catalogo)-(\d+)-(\d+)/
     const linkMatch = textoCompleto.match(linkPattern)
 
     if (linkMatch) {
         const slug = linkMatch[0]
-
-        const { data: linkRows, error: linkError } = await supabase
+        const { data: linkRows } = await supabase
             .rpc("resolver_link", { p_slug: slug })
 
         const linkData = Array.isArray(linkRows) ? linkRows[0] : linkRows
@@ -168,10 +150,7 @@ export async function dispatchMessage({
             const session = await obtenerOCrearSesion(cliente.id, tenant.id)
             if (!session) return
 
-            await guardarMensaje(
-                session, tenant.id, cliente.id,
-                textoCompleto, message.id
-            )
+            await guardarMensaje(session, tenant.id, cliente.id, textoCompleto, message.id)
 
             const respuesta = await handleLink({
                 tenant,
@@ -183,25 +162,19 @@ export async function dispatchMessage({
             })
 
             if (respuesta) {
-                await enviarYGuardar(
-                    phoneNumberIdStr, from, respuesta,
-                    session, tenant.id, cliente.id
-                )
+                await enviarYGuardar(phoneNumberIdStr, from, respuesta, session, tenant.id, cliente.id)
             }
             return
         }
     }
 
-    // =========================
-    // 8. SESIÓN CON EXPIRACIÓN
-    // =========================
+    // 8. SESIÓN
     let session = await obtenerSesionActiva(cliente.id, tenant.id, config)
 
     if (!session) {
         session = await crearSesion(cliente.id, tenant.id)
         if (!session) return
 
-        // Notificar lead nuevo
         if (esNuevoLead && config.notificar_lead_nuevo !== false) {
             await supabase.from("notificaciones").insert({
                 tenant_id: tenant.id,
@@ -213,26 +186,19 @@ export async function dispatchMessage({
         }
     }
 
-    // =========================
     // 9. GUARDAR MENSAJE ENTRANTE
-    // =========================
     await guardarMensaje(
         session, tenant.id, cliente.id,
         textoMensaje || "[interactivo]", message.id
     )
 
-    // =========================
     // 10. MODO MANUAL / PAUSADO
-    // =========================
     if (session.modo === "manual" || session.modo === "pausado") {
-
-        // Verificar reactivación automática por tiempo
         if (session.modo === "manual" && config?.tiempo_manual_min) {
             const tiempoManualMs = config.tiempo_manual_min * 60 * 1000
             const tiempoEnManual = Date.now() - new Date(session.updated_at).getTime()
 
             if (tiempoEnManual > tiempoManualMs) {
-                // Tiempo expirado — reactivar bot
                 await supabase
                     .from("chat_sesiones")
                     .update({
@@ -250,9 +216,7 @@ export async function dispatchMessage({
                     .single()
 
                 session = sessionReactivada
-                // Continúa al chatbot — no hace return
             } else {
-                // Aún en tiempo manual
                 await procesarRespuestaEnModoManual({
                     session, tenant, cliente,
                     textoMensaje: textoMensaje || "[interactivo]",
@@ -260,7 +224,6 @@ export async function dispatchMessage({
                 return
             }
         } else {
-            // Pausado — solo registrar y notificar
             await procesarRespuestaEnModoManual({
                 session, tenant, cliente,
                 textoMensaje: textoMensaje || "[interactivo]",
@@ -269,9 +232,7 @@ export async function dispatchMessage({
         }
     }
 
-    // =========================
     // 11. COMANDO DE CONTROL
-    // =========================
     const esComando = await procesarComandoControl({
         texto: textoMensaje,
         buttonId,
@@ -283,9 +244,7 @@ export async function dispatchMessage({
     })
     if (esComando) return
 
-    // =========================
     // 12. CHATBOT
-    // =========================
     const respuesta = await handleMessage({
         tenant,
         cliente,
@@ -294,17 +253,13 @@ export async function dispatchMessage({
         textoMensaje,
         buttonId,
         phoneNumberId: phoneNumberIdStr,
+        from,
         config,
     })
 
-    // =========================
     // 13. RESPONDER Y GUARDAR
-    // =========================
     if (respuesta) {
-        await enviarYGuardar(
-            phoneNumberIdStr, from, respuesta,
-            session, tenant.id, cliente.id
-        )
+        await enviarYGuardar(phoneNumberIdStr, from, respuesta, session, tenant.id, cliente.id)
     }
 }
 
@@ -332,7 +287,6 @@ async function obtenerSesionActiva(
     const INACTIVIDAD_MIN = config?.tiempo_inactividad_min ?? 15
     const INACTIVIDAD_MS = INACTIVIDAD_MIN * 60 * 1000
     const EXPIRACION_MS = 24 * 60 * 60 * 1000
-
     const ahora = Date.now()
     const ultimaActividad = new Date(session.updated_at).getTime()
     const inactiva = ahora - ultimaActividad > INACTIVIDAD_MS
@@ -434,7 +388,7 @@ async function guardarMensaje(
 async function enviarYGuardar(
     phoneNumberId: string,
     to: string,
-    respuesta: string | { tipo: "buttons" | "list"; payload: any },
+    respuesta: string | { tipo: "buttons" | "list" | "image"; payload: any },
     session: any,
     tenantId: number,
     clienteId: number
@@ -448,16 +402,16 @@ async function enviarYGuardar(
             contenido = respuesta
         } else if (respuesta.tipo === "buttons") {
             const { body, buttons, header, footer } = respuesta.payload
-            messageId = await sendWhatsAppButtons(
-                phoneNumberId, to, body, buttons, header, footer
-            )
+            messageId = await sendWhatsAppButtons(phoneNumberId, to, body, buttons, header, footer)
             contenido = body
         } else if (respuesta.tipo === "list") {
             const { body, buttonText, sections, header, footer } = respuesta.payload
-            messageId = await sendWhatsAppList(
-                phoneNumberId, to, body, buttonText, sections, header, footer
-            )
+            messageId = await sendWhatsAppList(phoneNumberId, to, body, buttonText, sections, header, footer)
             contenido = body
+        } else if (respuesta.tipo === "image") {
+            const { imageUrl, caption } = respuesta.payload
+            messageId = await sendWhatsAppImage(phoneNumberId, to, imageUrl, caption)
+            contenido = caption || imageUrl
         }
 
         await supabase.from("mensajes").insert({
@@ -475,17 +429,13 @@ async function enviarYGuardar(
 }
 
 async function procesarRespuestaEnModoManual({
-    session,
-    tenant,
-    cliente,
-    textoMensaje,
+    session, tenant, cliente, textoMensaje,
 }: {
     session: any
     tenant: any
     cliente: any
     textoMensaje: string
 }) {
-    // Verificar último mensaje del asesor
     const { data: ultimoAsesor } = await supabase
         .from("mensajes")
         .select("contenido, created_at")
@@ -496,7 +446,6 @@ async function procesarRespuestaEnModoManual({
         .limit(1)
         .maybeSingle()
 
-    // Verificar último mensaje del cliente (antes del actual)
     const { data: ultimoCliente } = await supabase
         .from("mensajes")
         .select("contenido, created_at")
@@ -504,7 +453,7 @@ async function procesarRespuestaEnModoManual({
         .eq("origen", "cliente")
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
-        .limit(2)
+        .limit(1)
         .maybeSingle()
 
     const asesorEsperaRespuesta = ultimoAsesor && (
@@ -512,7 +461,7 @@ async function procesarRespuestaEnModoManual({
         new Date(ultimoAsesor.created_at) > new Date(ultimoCliente.created_at)
     )
 
-    const tipoNotificacion = asesorEsperaRespuesta
+    const msg = asesorEsperaRespuesta
         ? `${cliente.celular} respondió al asesor: "${textoMensaje.slice(0, 100)}"`
         : `${cliente.celular} escribió (modo manual): "${textoMensaje.slice(0, 100)}"`
 
@@ -521,7 +470,7 @@ async function procesarRespuestaEnModoManual({
         cliente_id: cliente.id,
         sesion_id: session.id,
         tipo: "modo_manual",
-        mensaje: tipoNotificacion,
+        mensaje: msg,
     })
 
     await supabase
@@ -606,12 +555,7 @@ async function resumenCitasHoy(tenantId: number): Promise<string> {
 
     const { data } = await supabase
         .from("reservas")
-        .select(`
-            fecha, estado,
-            clientes(nombres_completos, celular),
-            propiedades(nombre),
-            proyectos(nombre)
-        `)
+        .select(`fecha, estado, clientes(nombres_completos, celular), propiedades(nombre), proyectos(nombre)`)
         .eq("tenant_id", tenantId)
         .gte("fecha", `${hoy}T00:00:00`)
         .lte("fecha", `${hoy}T23:59:59`)
@@ -621,12 +565,9 @@ async function resumenCitasHoy(tenantId: number): Promise<string> {
 
     let res = `📅 Citas de hoy (${data.length}):\n\n`
     data.forEach((r: any, i) => {
-        const hora = new Date(r.fecha).toLocaleTimeString("es-EC", {
-            hour: "2-digit", minute: "2-digit"
-        })
+        const hora = new Date(r.fecha).toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" })
         const nombre = r.propiedades?.nombre || r.proyectos?.nombre || "Visita"
-        res += `${i + 1}. ${hora} — ${r.clientes?.nombres_completos}\n`
-        res += `   📍 ${nombre} — ${r.estado}\n\n`
+        res += `${i + 1}. ${hora} — ${r.clientes?.nombres_completos}\n   📍 ${nombre} — ${r.estado}\n\n`
     })
     return res
 }

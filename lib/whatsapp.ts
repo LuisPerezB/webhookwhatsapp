@@ -1,8 +1,5 @@
 const WA_API = "https://graph.facebook.com/v21.0"
 
-// =========================
-// MENSAJE DE TEXTO
-// =========================
 export async function sendWhatsAppMessage(
     phoneNumberId: string,
     to: string,
@@ -16,9 +13,6 @@ export async function sendWhatsAppMessage(
     })
 }
 
-// =========================
-// BOTONES INTERACTIVOS (máx 3)
-// =========================
 export async function sendWhatsAppButtons(
     phoneNumberId: string,
     to: string,
@@ -49,9 +43,6 @@ export async function sendWhatsAppButtons(
     })
 }
 
-// =========================
-// LISTA INTERACTIVA (máx 10 items)
-// =========================
 export async function sendWhatsAppList(
     phoneNumberId: string,
     to: string,
@@ -90,9 +81,23 @@ export async function sendWhatsAppList(
     })
 }
 
-// =========================
-// HELPER INTERNO
-// =========================
+export async function sendWhatsAppImage(
+    phoneNumberId: string,
+    to: string,
+    imageUrl: string,
+    caption?: string
+): Promise<string | null> {
+    return await sendWA(phoneNumberId, {
+        messaging_product: "whatsapp",
+        to,
+        type: "image",
+        image: {
+            link: imageUrl,
+            ...(caption && { caption: caption.slice(0, 1024) })
+        }
+    })
+}
+
 async function sendWA(
     phoneNumberId: string,
     payload: any
@@ -120,20 +125,13 @@ async function sendWA(
     return messageId
 }
 
-// =========================
-// EXTRAER TEXTO DEL MENSAJE
-// Maneja texto normal + respuestas de botones/listas
-// =========================
 export function extraerTextoMensaje(message: any): {
     texto: string
     esInteractivo: boolean
     buttonId?: string
 } {
     if (message.type === "text") {
-        return {
-            texto: message.text?.body || "",
-            esInteractivo: false,
-        }
+        return { texto: message.text?.body || "", esInteractivo: false }
     }
 
     if (message.type === "interactive") {
