@@ -29,40 +29,44 @@ export async function handleLink({
     if (tipo === "propiedad" && propiedad_id) {
         const { data: prop } = await supabase
             .from("propiedades")
-            .select("*, ciudad_id, sector_id")
+            .select(`
+                *,
+                ciudad:ciudad_id(nombre),
+                sector:sector_id(nombre)
+            `)
             .eq("id", propiedad_id)
             .eq("tenant_id", tenant.id)
             .eq("estado", "disponible")
             .is("deleted_at", null)
             .single()
 
-        if (!prop) return "Esta propiedad ya no está disponible. ¿Deseas ver otras opciones?"
+        if (!prop) return "Esta propiedad ya no esta disponible."
 
         await supabase
             .from("propiedades")
             .update({ total_consultas: (prop.total_consultas || 0) + 1 })
             .eq("id", propiedad_id)
 
-        const { ciudadNombre, sectorNombre } = await obtenerUbicacion(prop.ciudad_id, prop.sector_id)
+        const ciudadNombre = (prop.ciudad as any)?.nombre || ""
+        const sectorNombre = (prop.sector as any)?.nombre || ""
 
-        // Enviar foto si existe
         const fotos = prop.fotos as any[]
         if (fotos?.length > 0) {
             const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
-            if (url) await sendWhatsAppImage(phoneNumberId, cliente.celular, url, prop.nombre)
+            if (url) await sendWhatsAppImage(phoneNumberId, cliente.celular, url, prop.nombre).catch(() => {})
         }
 
         return {
             tipo: "buttons",
             payload: {
-                header: prop.nombre,
+                header: prop.nombre.slice(0, 60),
                 body: formatearDetallePropiedad(prop),
                 buttons: [
-                    { id: `reservar_prop_${propiedad_id}`, title: "📅 Reservar visita" },
-                    { id: `ver_web_prop_${propiedad_id}`, title: "🌐 Ver en web" },
-                    { id: "menu_principal", title: "🏠 Ver más opciones" },
+                    { id: `reservar_prop_${propiedad_id}`, title: "Reservar visita" },
+                    { id: `ver_web_prop_${propiedad_id}`, title: "Ver en web" },
+                    { id: "menu_principal", title: "Ver mas opciones" },
                 ],
-                footer: `${ciudadNombre} · ${sectorNombre}`
+                footer: [ciudadNombre, sectorNombre].filter(Boolean).join(", ")
             }
         }
     }
@@ -70,38 +74,41 @@ export async function handleLink({
     if (tipo === "proyecto" && proyecto_id) {
         const { data: proy } = await supabase
             .from("proyectos")
-            .select("*, ciudad_id, sector_id")
+            .select(`
+                *,
+                ciudad:ciudad_id(nombre),
+                sector:sector_id(nombre)
+            `)
             .eq("id", proyecto_id)
             .eq("tenant_id", tenant.id)
             .eq("estado", "activo")
             .is("deleted_at", null)
             .single()
 
-        if (!proy) return "Este proyecto ya no está disponible. ¿Deseas ver otras opciones?"
+        if (!proy) return "Este proyecto ya no esta disponible."
 
         await supabase
             .from("proyectos")
             .update({ total_consultas: (proy.total_consultas || 0) + 1 })
             .eq("id", proyecto_id)
 
-        const { ciudadNombre } = await obtenerUbicacion(proy.ciudad_id, proy.sector_id)
+        const ciudadNombre = (proy.ciudad as any)?.nombre || ""
 
-        // Enviar foto si existe
         const fotos = proy.fotos as any[]
         if (fotos?.length > 0) {
             const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
-            if (url) await sendWhatsAppImage(phoneNumberId, cliente.celular, url, proy.nombre)
+            if (url) await sendWhatsAppImage(phoneNumberId, cliente.celular, url, proy.nombre).catch(() => {})
         }
 
         return {
             tipo: "buttons",
             payload: {
-                header: proy.nombre,
+                header: proy.nombre.slice(0, 60),
                 body: formatearDetalleProyecto(proy),
                 buttons: [
-                    { id: `ver_unidades_${proyecto_id}`, title: "🏠 Ver unidades" },
-                    { id: `reservar_proy_${proyecto_id}`, title: "📅 Reservar visita" },
-                    { id: `ver_web_proy_${proyecto_id}`, title: "🌐 Ver en web" },
+                    { id: `ver_unidades_${proyecto_id}`, title: "Ver unidades" },
+                    { id: `reservar_proy_${proyecto_id}`, title: "Reservar visita" },
+                    { id: `ver_web_proy_${proyecto_id}`, title: "Ver en web" },
                 ],
                 footer: ciudadNombre
             }
@@ -127,11 +134,11 @@ export async function handleMessage({
     if (text === "agente" || text === "hablar con agente" || text === "humano" || btnId === "hablar_agente") {
         await activarModoManual(session, tenant, cliente)
         const tiempoManual = config?.tiempo_manual_min ?? 15
-        return `Un agente te atenderá en breve. ⏳\n\nEn ${tiempoManual} minutos el asistente se reactivará automáticamente.`
+        return `Un agente teatendera en breve. ⏳\n\nEn ${tiempoManual} minutos el asistente se reactivara automaticamente.`
     }
 
     if (text === "bot" || text === "menu" || btnId === "menu_principal") {
-        await updateSession(session.id, { step: "menu_principal" }) // ← forzar step
+        await updateSession(session.id, { step: "menu_principal" })
         return await menuPrincipal(tenant, cliente, config)
     }
 
@@ -148,7 +155,7 @@ export async function handleMessage({
                 return solicitarCedula()
             }
             await updateSession(session.id, { step: "agendar_propiedad", propiedad_id: propId })
-            return await mostrarHorariosPropiedad(propId, config?.dias_max_cita ?? 7, session.id)
+            return await mostrarHorariosPropiedad(propId, config?.dias_max_cita ?? 7, session.id, state)
         }
 
         if (btnId.startsWith("reservar_proy_")) {
@@ -158,7 +165,7 @@ export async function handleMessage({
                 return solicitarCedula()
             }
             await updateSession(session.id, { step: "agendar_proyecto", proyecto_id: proyId })
-            return await mostrarHorariosProyecto(proyId, config?.dias_max_cita ?? 7, session.id)
+            return await mostrarHorariosProyecto(proyId, config?.dias_max_cita ?? 7, session.id, state)
         }
 
         if (btnId.startsWith("ver_unidades_")) {
@@ -172,7 +179,7 @@ export async function handleMessage({
                 .replace("ver_web_prop_", "propiedad-")
                 .replace("ver_web_proy_", "proyecto-")
             const appUrl = process.env.NEXT_PUBLIC_APP_URL || ""
-            return `🌐 Ver detalles, fotos y ubicación:\n${appUrl}/p/${slug}`
+            return `Ver detalles, fotos y ubicacion:\n${appUrl}/p/${slug}`
         }
     }
 
@@ -182,9 +189,8 @@ export async function handleMessage({
         return await menuPrincipal(tenant, cliente, config)
     }
 
-    // MENÚ PRINCIPAL
+    // MENU PRINCIPAL
     if (state.step === "menu_principal" || btnId === "menu_principal") {
-        // Forzar step correcto
         if (state.step !== "menu_principal") {
             await updateSession(session.id, { step: "menu_principal" })
             state = { step: "menu_principal" }
@@ -192,7 +198,7 @@ export async function handleMessage({
 
         if (btnId === "btn_propiedades" || text === "1" || text.includes("propiedad")) {
             await updateSession(session.id, { step: "busqueda_texto" })
-            return "¿Qué estás buscando? Puedes describirlo directamente:\n\n_Ej: \"casa con 3 habitaciones en el norte de Guayaquil\"_\n_Ej: \"departamento para alquilar en Quito\"_\n\nO escribe *filtros* para buscar paso a paso."
+            return "Que estas buscando? Puedes describirlo directamente:\n\nEj: casa con 3 habitaciones en el norte de Guayaquil\nEj: departamento para alquilar en Quito\n\nO escribe 'filtros' para buscar paso a paso."
         }
 
         if (btnId === "btn_proyectos" || text === "2" || text.includes("proyecto")) {
@@ -203,14 +209,13 @@ export async function handleMessage({
         if (btnId === "btn_asesor" || text === "4" || text.includes("asesor")) {
             await activarModoManual(session, tenant, cliente)
             const tiempoManual = config?.tiempo_manual_min ?? 15
-            return `Un agente te atenderá en breve. ⏳\n\nEn ${tiempoManual} minutos el asistente se reactivará automáticamente.`
+            return `Un agente teatendera en breve. ⏳\n\nEn ${tiempoManual} minutos el asistente se reactivara automaticamente.`
         }
 
-        // Si no coincide nada, mostrar menú de nuevo
         return await menuPrincipal(tenant, cliente, config)
     }
 
-    // BÚSQUEDA POR TEXTO
+    // BUSQUEDA POR TEXTO
     if (state.step === "busqueda_texto") {
         if (text === "filtros") {
             await updateSession(session.id, { ...state, step: "filtro_tipo" })
@@ -234,23 +239,21 @@ export async function handleMessage({
             return {
                 tipo: "buttons",
                 payload: {
-                    body: `No encontré ${params.tipo_propiedad || "propiedades"} con esos criterios.\n\n¿Qué deseas hacer?`,
+                    body: `No encontre ${params.tipo_propiedad || "propiedades"} con esos criterios.\n\nQue deseas hacer?`,
                     buttons: [
-                        { id: "buscar_otro_sector", title: "🔍 Cambiar búsqueda" },
-                        { id: "ver_proyectos", title: "🏗️ Ver proyectos" },
-                        { id: "btn_filtros", title: "🔧 Usar filtros" },
+                        { id: "buscar_otro_sector", title: "Cambiar busqueda" },
+                        { id: "ver_proyectos", title: "Ver proyectos" },
+                        { id: "btn_filtros", title: "Usar filtros" },
                     ]
                 }
             }
         }
 
-        // No entendió — pasar a filtros automáticamente
         await updateSession(session.id, { ...state, step: "filtro_tipo" })
         return await listaTipoPropiedad()
     }
 
-    // FLUJO FILTROS
-    // filtro_tipo — sin negrita ni emojis en el body
+    // FILTRO TIPO
     if (state.step === "filtro_tipo") {
         const tipo = resolverTipo(btnId || text)
         if (!tipo) return await listaTipoPropiedad()
@@ -260,30 +263,31 @@ export async function handleMessage({
         return {
             tipo: "buttons",
             payload: {
-                body: `${tipo.charAt(0).toUpperCase() + tipo.slice(1)}\n\n¿Para que operacion buscas?`,
+                body: `${tipo.charAt(0).toUpperCase() + tipo.slice(1)}\n\nPara que operacion buscas?`,
                 buttons: [
-                    { id: "op_venta", title: "1.Comprar" },
-                    { id: "op_alquiler", title: "2.Alquilar" },
+                    { id: "op_venta", title: "Comprar" },
+                    { id: "op_alquiler", title: "Alquilar" },
                 ]
             }
         }
     }
 
+    // FILTRO OPERACION
     if (state.step === "filtro_operacion") {
         const operacion = btnId === "op_venta" ? "venta"
             : btnId === "op_alquiler" ? "alquiler"
-                : text.includes("comprar") || text.includes("venta") ? "venta"
-                    : text.includes("alquil") || text.includes("arrend") ? "alquiler"
-                        : null
+            : text.includes("comprar") || text.includes("venta") ? "venta"
+            : text.includes("alquil") || text.includes("arrend") ? "alquiler"
+            : null
 
         if (!operacion) {
             return {
                 tipo: "buttons",
                 payload: {
-                    body: "¿Para qué operación?",
+                    body: "Para que operacion buscas?",
                     buttons: [
-                        { id: "op_venta", title: "1.Comprar" },
-                        { id: "op_alquiler", title: "2.Alquilar" },
+                        { id: "op_venta", title: "Comprar" },
+                        { id: "op_alquiler", title: "Alquilar" },
                     ]
                 }
             }
@@ -293,15 +297,15 @@ export async function handleMessage({
         return await listaCiudades()
     }
 
+    // FILTRO CIUDAD
     if (state.step === "filtro_ciudad") {
-        let ciudadId: number | null = null
-        let ciudadNombre = ""
-
-        // Usuario seleccionó "Otra ciudad" de la lista
         if (btnId === "ciudad_otra") {
             await updateSession(session.id, { ...state, step: "filtro_ciudad_texto" })
             return "Escribe el nombre de la ciudad que buscas:"
         }
+
+        let ciudadId: number | null = null
+        let ciudadNombre = ""
 
         if (btnId.startsWith("ciudad_")) {
             ciudadId = parseInt(btnId.replace("ciudad_", ""))
@@ -309,31 +313,11 @@ export async function handleMessage({
                 .from("ciudades").select("nombre").eq("id", ciudadId).single()
             ciudadNombre = c?.nombre || ""
         } else if (text) {
-            // Búsqueda fuzzy con fuse.js
-            const { data: todasCiudades } = await supabase
-                .from("ciudades")
-                .select("id, nombre")
-                .is("deleted_at", null)
-                .order("nombre")
-
-            if (todasCiudades?.length) {
-                const Fuse = (await import("fuse.js")).default
-                const fuse = new Fuse(todasCiudades, {
-                    keys: ["nombre"],
-                    threshold: 0.4,
-                })
-                const resultados = fuse.search(text)
-                if (resultados.length > 0) {
-                    const mejor = resultados[0].item as any
-                    ciudadId = mejor.id
-                    ciudadNombre = mejor.nombre
-                }
-            }
+            const resultado = await buscarCiudadFuzzy(text)
+            if (resultado) { ciudadId = resultado.id; ciudadNombre = resultado.nombre }
         }
 
-        if (!ciudadId) {
-            return "No encontre esa ciudad. Escribe el nombre nuevamente:"
-        }
+        if (!ciudadId) return "No encontre esa ciudad. Escribe el nombre nuevamente:"
 
         await updateSession(session.id, {
             ...state, step: "filtro_sector",
@@ -342,42 +326,20 @@ export async function handleMessage({
         return await listaSectores(ciudadId, ciudadNombre)
     }
 
-    // Paso extra cuando escribe ciudad manualmente después de "Otra ciudad"
+    // FILTRO CIUDAD TEXTO (Otra ciudad)
     if (state.step === "filtro_ciudad_texto") {
-        const { data: todasCiudades } = await supabase
-            .from("ciudades")
-            .select("id, nombre")
-            .is("deleted_at", null)
-            .order("nombre")
+        const resultado = await buscarCiudadFuzzy(text)
 
-        let ciudadId: number | null = null
-        let ciudadNombre = ""
-
-        if (todasCiudades?.length) {
-            const Fuse = (await import("fuse.js")).default
-            const fuse = new Fuse(todasCiudades, {
-                keys: ["nombre"],
-                threshold: 0.4,
-            })
-            const resultados = fuse.search(text)
-            if (resultados.length > 0) {
-                const mejor = resultados[0].item as any
-                ciudadId = mejor.id
-                ciudadNombre = mejor.nombre
-            }
-        }
-
-        if (!ciudadId) {
-            return "No encontre esa ciudad. Intenta de nuevo:"
-        }
+        if (!resultado) return "No encontre esa ciudad. Intenta de nuevo:"
 
         await updateSession(session.id, {
             ...state, step: "filtro_sector",
-            ciudad_id: ciudadId, ciudad_nombre: ciudadNombre
+            ciudad_id: resultado.id, ciudad_nombre: resultado.nombre
         })
-        return await listaSectores(ciudadId, ciudadNombre)
+        return await listaSectores(resultado.id, resultado.nombre)
     }
 
+    // FILTRO SECTOR
     if (state.step === "filtro_sector") {
         let sectorId: number | null = null
         let sectorNombre = "todos los sectores"
@@ -414,7 +376,7 @@ export async function handleMessage({
         })
     }
 
-    // PAGINACIÓN
+    // PAGINACION
     if (state.step === "mostrar_resultados" &&
         (btnId === "pagina_siguiente" || btnId === "pagina_anterior")) {
         const pagina = state.pagina || 0
@@ -451,53 +413,9 @@ export async function handleMessage({
         }
 
         if (propiedadId) {
-            const { data: prop } = await supabase
-                .from("propiedades")
-                .select("*, ciudad_id, sector_id")
-                .eq("id", propiedadId)
-                .single()
-
-            if (!prop) return "Propiedad no encontrada."
-
-            await supabase
-                .from("propiedades")
-                .update({ total_consultas: (prop.total_consultas || 0) + 1 })
-                .eq("id", propiedadId)
-
-            await updateSession(session.id, {
-                ...state, step: "detalle_propiedad", propiedad_id: propiedadId
-            })
-
-            // Enviar foto si existe
-            const fotos = prop.fotos as any[]
-            if (fotos?.length > 0) {
-                const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
-                if (url && phoneNumberId && from) {
-                    await sendWhatsAppImage(phoneNumberId, from, url, prop.nombre)
-                        .catch(() => { }) // No bloquear si falla la foto
-                }
-            }
-
-            const { ciudadNombre, sectorNombre } = await obtenerUbicacion(prop.ciudad_id, prop.sector_id)
-            const slug = await supabase.rpc("obtener_o_crear_link", {
-                p_tipo: "propiedad",
-                p_tenant_id: tenant.id,
-                p_propiedad_id: propiedadId
-            })
-
-            return {
-                tipo: "buttons",
-                payload: {
-                    header: prop.nombre,
-                    body: formatearDetallePropiedad(prop),
-                    buttons: [
-                        { id: `reservar_prop_${propiedadId}`, title: "📅 Reservar visita" },
-                        { id: `ver_web_prop_${propiedadId}`, title: "🌐 Ver en web" },
-                        { id: "btn_volver", title: "↩️ Volver" },
-                    ],
-                    footer: `${ciudadNombre} · ${sectorNombre}`
-                }
-            }
+            return await mostrarDetallePropiedad(
+                propiedadId, session, state, tenant, phoneNumberId, from
+            )
         }
 
         return "Selecciona una propiedad de la lista."
@@ -512,12 +430,12 @@ export async function handleMessage({
                 return solicitarCedula()
             }
             await updateSession(session.id, { ...state, step: "agendar_propiedad" })
-            return await mostrarHorariosPropiedad(propId, config?.dias_max_cita ?? 7, session.id)
+            return await mostrarHorariosPropiedad(propId, config?.dias_max_cita ?? 7, session.id, state)
         }
 
         if (btnId === "btn_volver" || text === "0") {
             await updateSession(session.id, { ...state, step: "mostrar_resultados" })
-            return "¿Qué otra propiedad te interesa?"
+            return "Que otra propiedad te interesa?"
         }
     }
 
@@ -535,54 +453,18 @@ export async function handleMessage({
         }
 
         if (proyId) {
-            const { data: proy } = await supabase
-                .from("proyectos")
-                .select("*, ciudad_id, sector_id")
-                .eq("id", proyId)
-                .single()
-
-            if (!proy) return "Proyecto no encontrado."
-
-            await updateSession(session.id, { ...state, step: "detalle_proyecto", proyecto_id: proyId })
-
-            const { ciudadNombre } = await obtenerUbicacion(proy.ciudad_id, proy.sector_id)
-
-            // Foto del proyecto
-            const fotos = proy.fotos as any[]
-            if (fotos?.length > 0) {
-                const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
-                if (url && phoneNumberId && from) {
-                    await sendWhatsAppImage(phoneNumberId, from, url, proy.nombre)
-                        .catch(() => { })
-                }
-            }
-
-            return {
-                tipo: "buttons",
-                payload: {
-                    header: proy.nombre,
-                    body: formatearDetalleProyecto(proy),
-                    buttons: [
-                        { id: `ver_unidades_${proyId}`, title: "🏠 Ver unidades" },
-                        { id: `reservar_proy_${proyId}`, title: "📅 Reservar visita" },
-                        { id: "btn_volver", title: "↩️ Volver" },
-                    ],
-                    footer: ciudadNombre
-                }
-            }
+            return await mostrarDetalleProyecto(proyId, session, state, tenant, phoneNumberId, from)
         }
 
         return await listarProyectos(tenant.id)
     }
 
-    // Después del bloque de "ver_proyectos", antes de "ver_unidades_proyecto"
+    // DETALLE PROYECTO
     if (state.step === "detalle_proyecto") {
         if (btnId.startsWith("ver_unidades_")) {
             const proyId = parseInt(btnId.replace("ver_unidades_", ""))
             await updateSession(session.id, {
-                ...state,
-                step: "ver_unidades_proyecto",
-                proyecto_id: proyId
+                ...state, step: "ver_unidades_proyecto", proyecto_id: proyId
             })
             return await listarUnidadesProyecto(proyId)
         }
@@ -594,7 +476,7 @@ export async function handleMessage({
                 return solicitarCedula()
             }
             await updateSession(session.id, { step: "agendar_proyecto", proyecto_id: proyId })
-            return await mostrarHorariosProyecto(proyId, config?.dias_max_cita ?? 7, session.id)
+            return await mostrarHorariosProyecto(proyId, config?.dias_max_cita ?? 7, session.id, state)
         }
 
         if (btnId === "btn_volver" || text === "0") {
@@ -603,82 +485,19 @@ export async function handleMessage({
         }
     }
 
-
+    // VER UNIDADES PROYECTO
     if (state.step === "ver_unidades_proyecto") {
-        // Si selecciona una unidad
         if (btnId.startsWith("prop_")) {
             const propiedadId = parseInt(btnId.replace("prop_", ""))
-
-            const { data: prop } = await supabase
-                .from("propiedades")
-                .select("*, ciudad_id, sector_id")
-                .eq("id", propiedadId)
-                .single()
-
-            if (!prop) return "Propiedad no encontrada."
-
-            await supabase
-                .from("propiedades")
-                .update({ total_consultas: (prop.total_consultas || 0) + 1 })
-                .eq("id", propiedadId)
-
-            await updateSession(session.id, {
-                ...state,
-                step: "detalle_propiedad",
-                propiedad_id: propiedadId
-            })
-
-            const fotos = prop.fotos as any[]
-            if (fotos?.length > 0) {
-                const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
-                if (url && phoneNumberId && from) {
-                    await sendWhatsAppImage(phoneNumberId, from, url, prop.nombre).catch(() => { })
-                }
-            }
-
-            const { ciudadNombre, sectorNombre } = await obtenerUbicacion(prop.ciudad_id, prop.sector_id)
-
-            return {
-                tipo: "buttons",
-                payload: {
-                    header: prop.nombre,
-                    body: formatearDetallePropiedad(prop),
-                    buttons: [
-                        { id: `reservar_prop_${propiedadId}`, title: "📅 Reservar visita" },
-                        { id: `ver_web_prop_${propiedadId}`, title: "🌐 Ver en web" },
-                        { id: "btn_volver", title: "↩️ Volver" },
-                    ],
-                    footer: `${ciudadNombre} · ${sectorNombre}`
-                }
-            }
+            return await mostrarDetallePropiedad(
+                propiedadId, session, state, tenant, phoneNumberId, from
+            )
         }
 
-        // Volver al proyecto
         if (btnId === "btn_volver" || text === "0") {
-            await updateSession(session.id, { ...state, step: "detalle_proyecto" })
-            const { data: proy } = await supabase
-                .from("proyectos")
-                .select("*, ciudad_id, sector_id")
-                .eq("id", state.proyecto_id)
-                .single()
-
-            if (!proy) return await listarProyectos(tenant.id)
-
-            const { ciudadNombre } = await obtenerUbicacion(proy.ciudad_id, proy.sector_id)
-
-            return {
-                tipo: "buttons",
-                payload: {
-                    header: proy.nombre,
-                    body: formatearDetalleProyecto(proy),
-                    buttons: [
-                        { id: `ver_unidades_${state.proyecto_id}`, title: "🏠 Ver unidades" },
-                        { id: `reservar_proy_${state.proyecto_id}`, title: "📅 Reservar visita" },
-                        { id: "btn_volver", title: "↩️ Volver" },
-                    ],
-                    footer: ciudadNombre
-                }
-            }
+            return await mostrarDetalleProyecto(
+                state.proyecto_id, session, state, tenant, phoneNumberId, from
+            )
         }
 
         return await listarUnidadesProyecto(state.proyecto_id)
@@ -699,8 +518,8 @@ export async function handleMessage({
 
         if (!horarioId) {
             return state.step === "agendar_propiedad"
-                ? await mostrarHorariosPropiedad(state.propiedad_id, config?.dias_max_cita ?? 7, session.id)
-                : await mostrarHorariosProyecto(state.proyecto_id, config?.dias_max_cita ?? 7, session.id)
+                ? await mostrarHorariosPropiedad(state.propiedad_id, config?.dias_max_cita ?? 7, session.id, state)
+                : await mostrarHorariosProyecto(state.proyecto_id, config?.dias_max_cita ?? 7, session.id, state)
         }
 
         const { data: horario } = await supabase
@@ -710,7 +529,7 @@ export async function handleMessage({
             .eq("disponible", true)
             .single()
 
-        if (!horario) return "Ese horario ya no está disponible. Elige otro:"
+        if (!horario) return "Ese horario ya no esta disponible. Elige otro:"
 
         const reservaData: any = {
             tenant_id: tenant.id,
@@ -722,19 +541,17 @@ export async function handleMessage({
         if (state.propiedad_id) reservaData.propiedad_id = state.propiedad_id
         if (state.proyecto_id) reservaData.proyecto_id = state.proyecto_id
 
-        await supabase.from("reservas").insert(reservaData)
-        await supabase
-            .from("horarios_disponibles")
-            .update({ disponible: false })
-            .eq("id", horarioId)
-
-        await supabase.from("notificaciones").insert({
-            tenant_id: tenant.id,
-            cliente_id: cliente.id,
-            sesion_id: session.id,
-            tipo: "cita_nueva",
-            mensaje: `Nueva cita de ${cliente.celular} para ${horario.fecha} a las ${horario.hora_inicio}`,
-        })
+        await Promise.all([
+            supabase.from("reservas").insert(reservaData),
+            supabase.from("horarios_disponibles").update({ disponible: false }).eq("id", horarioId),
+            supabase.from("notificaciones").insert({
+                tenant_id: tenant.id,
+                cliente_id: cliente.id,
+                sesion_id: session.id,
+                tipo: "cita_nueva",
+                mensaje: `Nueva cita de ${cliente.celular} para ${horario.fecha} a las ${horario.hora_inicio}`,
+            })
+        ])
 
         const fechaFormato = new Date(`${horario.fecha}T${horario.hora_inicio}`).toLocaleDateString("es-EC", {
             weekday: "long", day: "numeric", month: "long",
@@ -746,10 +563,10 @@ export async function handleMessage({
         const nombre = cliente.nombres_completos !== "Cliente WhatsApp"
             ? cliente.nombres_completos : "estimad@ cliente"
 
-        return `✅ *¡Cita confirmada!*\n\n📅 ${fechaFormato}\n\nTe esperamos, ${nombre}. Si necesitas cambiar tu cita escribe *citas* o *agente*.\n\n¡Que tengas un excelente día! 🌟`
+        return `Cita confirmada. ✅\n\nFecha: ${fechaFormato}\n\nTe esperamos, ${nombre}.\nSi necesitas cambiar tu cita escribe 'citas' o 'agente'.`
     }
 
-    // VERIFICACIÓN DE CÉDULA
+    // VERIFICACION DE CEDULA
     if (state.step === "solicitar_cedula") {
         const cedula = text.replace(/\D/g, "")
         const intentos = (state.intentos_cedula || 0) + 1
@@ -759,9 +576,9 @@ export async function handleMessage({
             await updateSession(session.id, { ...state, intentos_cedula: intentos })
             if (intentos >= maxIntentos) {
                 await activarModoManual(session, tenant, cliente)
-                return "Has superado el número de intentos. Un agente te contactará. ⏳"
+                return "Has superado el numero de intentos. Un agente te contactara. ⏳"
             }
-            return `Por favor ingresa los 10 dígitos de tu cédula (intento ${intentos}/${maxIntentos}):`
+            return `Ingresa los 10 digitos de tu cedula (intento ${intentos}/${maxIntentos}):`
         }
 
         const resultado = await validarCedulaAPI(cedula)
@@ -770,12 +587,11 @@ export async function handleMessage({
             await updateSession(session.id, { ...state, intentos_cedula: intentos })
             if (intentos >= maxIntentos) {
                 await activarModoManual(session, tenant, cliente)
-                return "Cédula inválida. Has superado el límite de intentos. Un agente te contactará. ⏳"
+                return "Cedula invalida. Has superado el limite de intentos. Un agente te contactara. ⏳"
             }
-            return `❌ ${resultado.error || "Cédula inválida"}.\n\nIntento ${intentos}/${maxIntentos}. Intenta de nuevo:`
+            return `${resultado.error || "Cedula invalida"}. Intento ${intentos}/${maxIntentos}. Intenta de nuevo:`
         }
 
-        // Cédula ya registrada con otro celular
         const { data: cedulaExistente } = await supabase
             .from("clientes")
             .select("id, celular")
@@ -788,41 +604,34 @@ export async function handleMessage({
                 .from("clientes")
                 .update({ celular_alternativo: from })
                 .eq("id", cedulaExistente.id)
-            return "⚠️ Esta cédula ya está registrada con otro número. Tu número ha sido registrado como contacto alternativo. Un agente te atenderá."
+            return "Esta cedula ya esta registrada con otro numero. Tu numero ha sido registrado como contacto alternativo. Un agente teatendera."
         }
 
-        // Actualizar cliente
         const updateData: any = {
             ruc_ci: cedula,
             verificado: true,
             verificado_at: new Date().toISOString(),
         }
-        if (resultado.nombre_completo) {
-            updateData.nombres_completos = resultado.nombre_completo
-        }
+        if (resultado.nombre_completo) updateData.nombres_completos = resultado.nombre_completo
+
         await supabase.from("clientes").update(updateData).eq("id", cliente.id)
 
         const saludoMsg = resultado.nombre_completo
-            ? `✅ Identidad verificada. Bienvenid@ *${resultado.nombre_completo}*.\n\nAhora selecciona el horario:`
-            : `✅ Cédula verificada.\n\nAhora selecciona el horario:`
+            ? `Identidad verificada. Bienvenid@ ${resultado.nombre_completo}.\n\nAhora selecciona el horario:`
+            : `Cedula verificada.\n\nAhora selecciona el horario:`
 
         const paso = state.propiedad_id ? "agendar_propiedad" : "agendar_proyecto"
-        await updateSession(session.id, { ...state, step: paso, intentos_cedula: 0 })
+        const newState = { ...state, step: paso, intentos_cedula: 0 }
+        await updateSession(session.id, newState)
 
-        // Enviar saludo como mensaje de texto separado
         if (phoneNumberId && from) {
             await sendWhatsAppMessage(phoneNumberId, from, saludoMsg)
         }
 
-        // Retornar los horarios como respuesta principal
         if (state.propiedad_id) {
-            return await mostrarHorariosPropiedad(
-                state.propiedad_id, config?.dias_max_cita ?? 7, session.id
-            )
+            return await mostrarHorariosPropiedad(state.propiedad_id, config?.dias_max_cita ?? 7, session.id, newState)
         } else {
-            return await mostrarHorariosProyecto(
-                state.proyecto_id, config?.dias_max_cita ?? 7, session.id
-            )
+            return await mostrarHorariosProyecto(state.proyecto_id, config?.dias_max_cita ?? 7, session.id, newState)
         }
     }
 
@@ -843,11 +652,11 @@ export async function handleMessage({
         return {
             tipo: "buttons",
             payload: {
-                body: "¿Qué deseas hacer?",
+                body: "Que deseas hacer?",
                 buttons: [
-                    { id: "buscar_otro_sector", title: "🔍 Cambiar búsqueda" },
-                    { id: "ver_proyectos", title: "🏗️ Ver proyectos" },
-                    { id: "btn_volver", title: "🏠 Menú principal" },
+                    { id: "buscar_otro_sector", title: "Cambiar busqueda" },
+                    { id: "ver_proyectos", title: "Ver proyectos" },
+                    { id: "btn_volver", title: "Menu principal" },
                 ]
             }
         }
@@ -859,16 +668,16 @@ export async function handleMessage({
         cliente_id: cliente.id,
         sesion_id: session.id,
         tipo: "bot_no_entendio",
-        mensaje: `No entendió: "${text}"`,
+        mensaje: `No entendio: "${text}"`,
     })
 
     return {
         tipo: "buttons",
         payload: {
-            body: "No entendí tu mensaje 😅\n\n¿Qué deseas hacer?",
+            body: "No entendi tu mensaje.\n\nQue deseas hacer?",
             buttons: [
-                { id: "menu_principal", title: "🏠 Menú principal" },
-                { id: "hablar_agente", title: "👤 Hablar con agente" },
+                { id: "menu_principal", title: "Menu principal" },
+                { id: "hablar_agente", title: "Hablar con agente" },
             ]
         }
     }
@@ -886,35 +695,148 @@ async function updateSession(id: number, contenido: any) {
 }
 
 async function activarModoManual(session: any, tenant: any, cliente: any) {
-    await supabase
-        .from("chat_sesiones")
-        .update({ modo: "manual" })
-        .eq("id", session.id)
-
-    await supabase.from("notificaciones").insert({
-        tenant_id: tenant.id,
-        cliente_id: cliente.id,
-        sesion_id: session.id,
-        tipo: "modo_manual",
-        mensaje: `${cliente.celular} solicitó un agente`,
-    })
+    await Promise.all([
+        supabase.from("chat_sesiones").update({ modo: "manual" }).eq("id", session.id),
+        supabase.from("notificaciones").insert({
+            tenant_id: tenant.id,
+            cliente_id: cliente.id,
+            sesion_id: session.id,
+            tipo: "modo_manual",
+            mensaje: `${cliente.celular} solicito un agente`,
+        })
+    ])
 }
 
-async function obtenerUbicacion(
-    ciudadId: number,
-    sectorId: number
-): Promise<{ ciudadNombre: string; sectorNombre: string }> {
-    const [{ data: ciudad }, { data: sector }] = await Promise.all([
-        supabase.from("ciudades").select("nombre").eq("id", ciudadId).maybeSingle(),
-        supabase.from("sectores").select("nombre").eq("id", sectorId).maybeSingle(),
+// Helper central — muestra detalle de propiedad con join en una sola query
+async function mostrarDetallePropiedad(
+    propiedadId: number,
+    session: any,
+    state: any,
+    tenant: any,
+    phoneNumberId: string,
+    from: string
+): Promise<Respuesta> {
+    const { data: prop } = await supabase
+        .from("propiedades")
+        .select(`
+            *,
+            ciudad:ciudad_id(nombre),
+            sector:sector_id(nombre)
+        `)
+        .eq("id", propiedadId)
+        .eq("tenant_id", tenant.id)
+        .single()
+
+    if (!prop) return "Propiedad no encontrada."
+
+    await Promise.all([
+        supabase.from("propiedades")
+            .update({ total_consultas: (prop.total_consultas || 0) + 1 })
+            .eq("id", propiedadId),
+        updateSession(session.id, {
+            ...state, step: "detalle_propiedad", propiedad_id: propiedadId
+        })
     ])
+
+    const fotos = prop.fotos as any[]
+    if (fotos?.length > 0) {
+        const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
+        if (url && phoneNumberId && from) {
+            await sendWhatsAppImage(phoneNumberId, from, url, prop.nombre).catch(() => {})
+        }
+    }
+
+    const ciudadNombre = (prop.ciudad as any)?.nombre || ""
+    const sectorNombre = (prop.sector as any)?.nombre || ""
+
     return {
-        ciudadNombre: (ciudad as any)?.nombre || "",
-        sectorNombre: (sector as any)?.nombre || "",
+        tipo: "buttons",
+        payload: {
+            header: prop.nombre.slice(0, 60),
+            body: formatearDetallePropiedad(prop),
+            buttons: [
+                { id: `reservar_prop_${propiedadId}`, title: "Reservar visita" },
+                { id: `ver_web_prop_${propiedadId}`, title: "Ver en web" },
+                { id: "btn_volver", title: "Volver" },
+            ],
+            footer: [ciudadNombre, sectorNombre].filter(Boolean).join(", ")
+        }
     }
 }
 
-// menuPrincipal — solo emojis en el menú principal que sí tienen sentido visual
+// Helper central — muestra detalle de proyecto con join en una sola query
+async function mostrarDetalleProyecto(
+    proyectoId: number,
+    session: any,
+    state: any,
+    tenant: any,
+    phoneNumberId: string,
+    from: string
+): Promise<Respuesta> {
+    const { data: proy } = await supabase
+        .from("proyectos")
+        .select(`
+            *,
+            ciudad:ciudad_id(nombre),
+            sector:sector_id(nombre)
+        `)
+        .eq("id", proyectoId)
+        .eq("tenant_id", tenant.id)
+        .single()
+
+    if (!proy) return await listarProyectos(tenant.id) as Respuesta
+
+    await Promise.all([
+        supabase.from("proyectos")
+            .update({ total_consultas: (proy.total_consultas || 0) + 1 })
+            .eq("id", proyectoId),
+        updateSession(session.id, {
+            ...state, step: "detalle_proyecto", proyecto_id: proyectoId
+        })
+    ])
+
+    const fotos = proy.fotos as any[]
+    if (fotos?.length > 0) {
+        const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
+        if (url && phoneNumberId && from) {
+            await sendWhatsAppImage(phoneNumberId, from, url, proy.nombre).catch(() => {})
+        }
+    }
+
+    const ciudadNombre = (proy.ciudad as any)?.nombre || ""
+
+    return {
+        tipo: "buttons",
+        payload: {
+            header: proy.nombre.slice(0, 60),
+            body: formatearDetalleProyecto(proy),
+            buttons: [
+                { id: `ver_unidades_${proyectoId}`, title: "Ver unidades" },
+                { id: `reservar_proy_${proyectoId}`, title: "Reservar visita" },
+                { id: "btn_volver", title: "Volver" },
+            ],
+            footer: ciudadNombre
+        }
+    }
+}
+
+async function buscarCiudadFuzzy(
+    texto: string
+): Promise<{ id: number; nombre: string } | null> {
+    const { data } = await supabase
+        .from("ciudades")
+        .select("id, nombre")
+        .is("deleted_at", null)
+        .order("nombre")
+
+    if (!data?.length) return null
+
+    const Fuse = (await import("fuse.js")).default
+    const fuse = new Fuse(data, { keys: ["nombre"], threshold: 0.4 })
+    const resultados = fuse.search(texto)
+    return resultados.length > 0 ? (resultados[0].item as any) : null
+}
+
 async function menuPrincipal(tenant: any, cliente: any, config: any): Promise<Respuesta> {
     const saludo = config?.saludo || `Bienvenido a ${tenant.nombre}`
     const permiteProyectos = config?.permite_proyectos !== false
@@ -922,7 +844,11 @@ async function menuPrincipal(tenant: any, cliente: any, config: any): Promise<Re
 
     const { data: reservaVigente } = await supabase
         .from("reservas")
-        .select("fecha, estado, propiedades:propiedad_id(nombre), proyectos:proyecto_id(nombre)")
+        .select(`
+            fecha, estado,
+            propiedades:propiedad_id(nombre),
+            proyectos:proyecto_id(nombre)
+        `)
         .eq("cliente_id", cliente.id)
         .eq("tenant_id", tenant.id)
         .in("estado", ["pendiente", "confirmada"])
@@ -945,7 +871,7 @@ async function menuPrincipal(tenant: any, cliente: any, config: any): Promise<Re
         bodyText += `\n\nTienes una cita para ${nombre} el ${fecha}.`
     }
 
-    bodyText += "\n\n¿En que puedo ayudarte?"
+    bodyText += "\n\nEn que puedo ayudarte?"
 
     const buttons: { id: string; title: string }[] = [
         { id: "btn_propiedades", title: "Ver propiedades" },
@@ -966,7 +892,10 @@ async function menuPrincipal(tenant: any, cliente: any, config: any): Promise<Re
 async function listarProyectos(tenantId: number, ciudadId?: number): Promise<Respuesta> {
     let query = supabase
         .from("proyectos")
-        .select("id, nombre, precio_desde, estado, fecha_entrega_estimada, ciudad_id, sector_id")
+        .select(`
+            id, nombre, precio_desde,
+            ciudad:ciudad_id(nombre)
+        `)
         .eq("tenant_id", tenantId)
         .eq("estado", "activo")
         .is("deleted_at", null)
@@ -982,35 +911,28 @@ async function listarProyectos(tenantId: number, ciudadId?: number): Promise<Res
             payload: {
                 body: "No tenemos proyectos disponibles en este momento.",
                 buttons: [
-                    { id: "btn_propiedades", title: "🏠 Ver propiedades" },
-                    { id: "menu_principal", title: "🏠 Menú principal" },
+                    { id: "btn_propiedades", title: "Ver propiedades" },
+                    { id: "menu_principal", title: "Menu principal" },
                 ]
             }
         }
     }
 
-    const ciudadIds = [...new Set(data.map(p => p.ciudad_id).filter(Boolean))]
-    const { data: ciudades } = await supabase
-        .from("ciudades").select("id, nombre").in("id", ciudadIds)
-    const ciudadMap: Record<number, string> = {}
-    ciudades?.forEach((c: any) => { ciudadMap[c.id] = c.nombre })
-
     return {
         tipo: "list",
         payload: {
-            header: "🏗️ Proyectos disponibles",
+            header: "Proyectos disponibles",
             body: "Selecciona el proyecto que te interesa:",
             buttonText: "Ver proyectos",
             sections: [{
                 title: "Disponibles",
-                rows: data.map(p => ({
-                    id: `proy_${p.id}`,
-                    title: p.nombre.slice(0, 24),
-                    description: [
-                        ciudadMap[p.ciudad_id] ? `📍 ${ciudadMap[p.ciudad_id]}` : null,
-                        p.precio_desde ? `💰 Desde $${Number(p.precio_desde).toLocaleString("es-EC")}` : null,
-                    ].filter(Boolean).join(" · ")
-                }))
+                rows: data.map((p: any) => {
+                    const ciudad = p.ciudad?.nombre || ""
+                    const precio = p.precio_desde
+                        ? `Desde $${Number(p.precio_desde).toLocaleString("es-EC")}`
+                        : ""
+                    return rowPropiedad(p.nombre, ciudad, "", precio, `proy_${p.id}`)
+                })
             }]
         }
     }
@@ -1025,32 +947,31 @@ async function listarUnidadesProyecto(proyectoId: number): Promise<Respuesta> {
         .is("deleted_at", null)
         .limit(8)
 
-    if (!data?.length) return "No hay unidades disponibles en este proyecto.\n\nEscribe *agente* para más información."
-
-    const rows = data.map(p => {
-        const hab = (p.ambientes as any)?.habitaciones
-        const m2 = (p.dimensiones as any)?.m2_construccion || (p.dimensiones as any)?.m2_total
-        const desc = [
-            hab ? `${hab} hab` : null,
-            m2 ? `${m2}m²` : null,
-            `$${Number(p.precio).toLocaleString("es-EC")}`
-        ].filter(Boolean).join(" · ")
-
-        return { id: `prop_${p.id}`, title: p.nombre.slice(0, 24), description: desc }
-    })
+    if (!data?.length) return "No hay unidades disponibles en este proyecto.\n\nEscribe 'agente' para mas informacion."
 
     return {
         tipo: "list",
         payload: {
-            header: "🏠 Unidades disponibles",
+            header: "Unidades disponibles",
             body: "Selecciona una unidad para ver detalles:",
             buttonText: "Ver unidades",
-            sections: [{ title: "Disponibles", rows }]
+            sections: [{
+                title: "Disponibles",
+                rows: data.map(p => {
+                    const hab = (p.ambientes as any)?.habitaciones
+                    const m2 = (p.dimensiones as any)?.m2_construccion || (p.dimensiones as any)?.m2_total
+                    const extra = [
+                        hab ? `${hab} hab` : null,
+                        m2 ? `${m2}m2` : null,
+                        `$${Number(p.precio).toLocaleString("es-EC")}`
+                    ].filter(Boolean).join(" · ")
+                    return rowPropiedad(p.nombre, "", "", extra, `prop_${p.id}`)
+                })
+            }]
         }
     }
 }
 
-// listaTipoPropiedad — sin emojis en los rows
 async function listaTipoPropiedad(): Promise<Respuesta> {
     return {
         tipo: "list",
@@ -1074,24 +995,23 @@ async function listaTipoPropiedad(): Promise<Respuesta> {
 async function listaCiudades(): Promise<Respuesta> {
     const { data } = await supabase
         .from("ciudades")
-        .select("id, nombre, provincia:provincia_id(nombre)")
+        .select(`
+            id, nombre,
+            provincia:provincia_id(nombre)
+        `)
         .is("deleted_at", null)
         .order("nombre")
 
-    if (!data?.length) {
-        return "Escribe el nombre de la ciudad donde buscas:\n\nEj: Guayaquil, Quito, Cuenca"
-    }
+    if (!data?.length) return "Escribe el nombre de la ciudad donde buscas:"
 
-    // WhatsApp lista: máximo 10 rows total en la práctica
-    // Mostrar las más relevantes + instrucción de escribir
     const principales = [
         "Guayaquil", "Quito", "Cuenca", "Manta", "Ambato",
         "Machala", "Santo Domingo", "Ibarra", "Loja", "Portoviejo"
     ]
 
-    const rows = data
+    const rows: any[] = data
         .filter((c: any) => principales.includes(c.nombre))
-        .slice(0, 9) // máximo 9 + 1 fijo de "Otra ciudad"
+        .slice(0, 9)
         .map((c: any) => ({
             id: `ciudad_${c.id}`,
             title: c.nombre,
@@ -1107,15 +1027,13 @@ async function listaCiudades(): Promise<Respuesta> {
     return {
         tipo: "list",
         payload: {
-            body: "Selecciona la ciudad o escribe el nombre directamente si no esta en la lista:",
+            body: "Selecciona la ciudad o escribe el nombre directamente:",
             buttonText: "Ver ciudades",
-            sections: [{
-                title: "Ciudades principales",
-                rows
-            }]
+            sections: [{ title: "Ciudades principales", rows }]
         }
     }
 }
+
 async function listaSectores(ciudadId: number, ciudadNombre: string): Promise<Respuesta> {
     const { data } = await supabase
         .from("sectores")
@@ -1125,7 +1043,7 @@ async function listaSectores(ciudadId: number, ciudadNombre: string): Promise<Re
         .order("nombre")
         .limit(9)
 
-    const rows: any[] = [{ id: "sector_todos", title: "📋 Todos los sectores" }]
+    const rows: any[] = [{ id: "sector_todos", title: "Todos los sectores" }]
     if (data?.length) {
         rows.push(...data.map(s => ({ id: `sector_${s.id}`, title: s.nombre })))
     }
@@ -1133,8 +1051,8 @@ async function listaSectores(ciudadId: number, ciudadNombre: string): Promise<Re
     return {
         tipo: "list",
         payload: {
-            body: `¿En qué sector de ${ciudadNombre}?`,
-            buttonText: "Seleccionar sector",
+            body: `Sector de ${ciudadNombre}:`,
+            buttonText: "Ver sectores",
             sections: [{ title: "Sectores", rows }]
         }
     }
@@ -1162,7 +1080,7 @@ async function buscarPropiedades(params: {
         p_banos: null, p_m2_min: null, p_m2_max: null,
         p_patio: null, p_jardin: null, p_piscina: null,
         p_estacionamientos: null, p_ascensor: null, p_amoblado: null,
-        p_limite: 20 // Traer más para paginar en memoria
+        p_limite: 20
     })
     return data || []
 }
@@ -1177,11 +1095,11 @@ async function formatearResultados(
         return {
             tipo: "buttons",
             payload: {
-                body: "No encontré propiedades con esos criterios.\n\n¿Qué deseas hacer?",
+                body: "No encontre propiedades con esos criterios.\n\nQue deseas hacer?",
                 buttons: [
-                    { id: "buscar_otro_sector", title: "🔍 Cambiar búsqueda" },
-                    { id: "ver_proyectos", title: "🏗️ Ver proyectos" },
-                    { id: "btn_volver", title: "🏠 Menú" },
+                    { id: "buscar_otro_sector", title: "Cambiar busqueda" },
+                    { id: "ver_proyectos", title: "Ver proyectos" },
+                    { id: "btn_volver", title: "Menu principal" },
                 ]
             }
         }
@@ -1203,39 +1121,43 @@ async function formatearResultados(
         pagina,
     })
 
-    const rows = pagActual.map(p => ({
-        id: `prop_${p.id}`,
-        title: p.nombre.slice(0, 24),
-        description: `$${Number(p.precio).toLocaleString("es-EC")} · ${p.ciudad_nombre || ""}`
-    }))
+    const rows = pagActual.map(p =>
+        rowPropiedad(
+            p.nombre,
+            p.ciudad_nombre || "",
+            p.sector_nombre || "",
+            `$${Number(p.precio).toLocaleString("es-EC")}`,
+            `prop_${p.id}`
+        )
+    )
 
     const navRows: any[] = []
     if (hayAnterior) navRows.push({
         id: "pagina_anterior",
-        title: "⬅️ Página anterior",
-        description: `Página ${pagina}`
+        title: "Pagina anterior",
+        description: `Pagina ${pagina} de ${totalPaginas}`
     })
     if (hayMas) navRows.push({
         id: "pagina_siguiente",
-        title: "➡️ Siguiente página",
-        description: `Página ${pagina + 2} de ${totalPaginas}`
+        title: "Siguiente pagina",
+        description: `Pagina ${pagina + 2} de ${totalPaginas}`
     })
-    navRows.push({ id: "btn_volver", title: "🏠 Volver al menú" })
+    navRows.push({ id: "btn_volver", title: "Volver al menu" })
 
     const sections: any[] = [{
-        title: `Propiedades (${inicio + 1}-${Math.min(inicio + ITEMS_POR_PAGINA, total)} de ${total})`,
+        title: `${inicio + 1}-${Math.min(inicio + ITEMS_POR_PAGINA, total)} de ${total}`,
         rows
     }]
 
     if (navRows.length > 0) {
-        sections.push({ title: "Navegación", rows: navRows })
+        sections.push({ title: "Navegacion", rows: navRows })
     }
 
     return {
         tipo: "list",
         payload: {
-            header: `🏠 ${total} resultado(s)`,
-            body: `Página ${pagina + 1} de ${totalPaginas}. Selecciona una propiedad:`,
+            header: `${total} resultado(s)`,
+            body: `Pagina ${pagina + 1} de ${totalPaginas}. Selecciona una propiedad:`,
             buttonText: "Ver propiedades",
             sections
         }
@@ -1243,7 +1165,10 @@ async function formatearResultados(
 }
 
 async function mostrarHorariosPropiedad(
-    propiedadId: number, diasMax: number, sessionId: number
+    propiedadId: number,
+    diasMax: number,
+    sessionId: number,
+    state: any
 ): Promise<Respuesta> {
     const desde = new Date().toISOString().split("T")[0]
     const hasta = new Date(Date.now() + diasMax * 86400000).toISOString().split("T")[0]
@@ -1265,22 +1190,20 @@ async function mostrarHorariosPropiedad(
             payload: {
                 body: "No hay horarios disponibles en este momento.",
                 buttons: [
-                    { id: "hablar_agente", title: "👤 Coordinar con agente" },
-                    { id: "btn_volver", title: "↩️ Volver" },
+                    { id: "hablar_agente", title: "Coordinar con agente" },
+                    { id: "btn_volver", title: "Volver" },
                 ]
             }
         }
     }
 
     const ids = data.map(h => h.id)
-    const { data: sesion } = await supabase
-        .from("chat_sesiones").select("contenido").eq("id", sessionId).single()
-    await updateSession(sessionId, { ...sesion?.contenido, horarios_ids: ids })
+    await updateSession(sessionId, { ...state, horarios_ids: ids })
 
     return {
         tipo: "list",
         payload: {
-            header: "📅 Horarios disponibles",
+            header: "Horarios disponibles",
             body: "Selecciona el horario para tu visita:",
             buttonText: "Ver horarios",
             sections: [{
@@ -1298,7 +1221,10 @@ async function mostrarHorariosPropiedad(
 }
 
 async function mostrarHorariosProyecto(
-    proyectoId: number, diasMax: number, sessionId: number
+    proyectoId: number,
+    diasMax: number,
+    sessionId: number,
+    state: any
 ): Promise<Respuesta> {
     const desde = new Date().toISOString().split("T")[0]
     const hasta = new Date(Date.now() + diasMax * 86400000).toISOString().split("T")[0]
@@ -1320,22 +1246,20 @@ async function mostrarHorariosProyecto(
             payload: {
                 body: "No hay horarios disponibles para este proyecto.",
                 buttons: [
-                    { id: "hablar_agente", title: "👤 Coordinar con agente" },
-                    { id: "btn_volver", title: "↩️ Volver" },
+                    { id: "hablar_agente", title: "Coordinar con agente" },
+                    { id: "btn_volver", title: "Volver" },
                 ]
             }
         }
     }
 
     const ids = data.map(h => h.id)
-    const { data: sesion } = await supabase
-        .from("chat_sesiones").select("contenido").eq("id", sessionId).single()
-    await updateSession(sessionId, { ...sesion?.contenido, horarios_ids: ids })
+    await updateSession(sessionId, { ...state, horarios_ids: ids })
 
     return {
         tipo: "list",
         payload: {
-            header: "📅 Horarios de visita al proyecto",
+            header: "Horarios de visita",
             body: "Selecciona el horario que prefieres:",
             buttonText: "Ver horarios",
             sections: [{
@@ -1345,7 +1269,7 @@ async function mostrarHorariosProyecto(
                     title: new Date(h.fecha + "T00:00:00").toLocaleDateString("es-EC", {
                         weekday: "short", day: "numeric", month: "short"
                     }),
-                    description: `🕐 ${h.hora_inicio} - ${h.hora_fin}`
+                    description: `${h.hora_inicio} - ${h.hora_fin}`
                 }))
             }]
         }
@@ -1355,7 +1279,11 @@ async function mostrarHorariosProyecto(
 async function listarCitasCliente(clienteId: number, tenantId: number): Promise<Respuesta> {
     const { data } = await supabase
         .from("reservas")
-        .select("fecha, estado, propiedades:propiedad_id(nombre), proyectos:proyecto_id(nombre)")
+        .select(`
+            fecha, estado,
+            propiedades:propiedad_id(nombre),
+            proyectos:proyecto_id(nombre)
+        `)
         .eq("cliente_id", clienteId)
         .eq("tenant_id", tenantId)
         .gte("fecha", new Date().toISOString())
@@ -1369,8 +1297,8 @@ async function listarCitasCliente(clienteId: number, tenantId: number): Promise<
             payload: {
                 body: "No tienes citas programadas.",
                 buttons: [
-                    { id: "btn_propiedades", title: "🏠 Buscar propiedades" },
-                    { id: "menu_principal", title: "🏠 Menú principal" },
+                    { id: "btn_propiedades", title: "Buscar propiedades" },
+                    { id: "menu_principal", title: "Menu principal" },
                 ]
             }
         }
@@ -1384,25 +1312,42 @@ async function listarCitasCliente(clienteId: number, tenantId: number): Promise<
             hour: "2-digit", minute: "2-digit"
         })
         const nombre = prop?.nombre || proy?.nombre || "Visita"
-        return `${i + 1}. *${nombre}*\n   📆 ${fecha} — ${r.estado}`
+        return `${i + 1}. ${nombre}\n   ${fecha} - ${r.estado}`
     }).join("\n\n")
 
     return {
         tipo: "buttons",
         payload: {
-            header: "📅 Tus citas próximas",
+            header: "Tus citas proximas",
             body: citas,
             buttons: [
-                { id: "hablar_agente", title: "📝 Modificar cita" },
-                { id: "btn_propiedades", title: "🏠 Ver más propiedades" },
-                { id: "menu_principal", title: "🏠 Menú" },
+                { id: "hablar_agente", title: "Modificar cita" },
+                { id: "btn_propiedades", title: "Ver propiedades" },
+                { id: "menu_principal", title: "Menu principal" },
             ]
         }
     }
 }
 
 function solicitarCedula(): Respuesta {
-    return "Para agendar tu visita necesitamos verificar tu identidad.\n\nPor favor ingresa tu número de cédula (10 dígitos):"
+    return "Para agendar tu visita necesitamos verificar tu identidad.\n\nIngresa tu numero de cedula (10 digitos):"
+}
+
+// rowPropiedad — ubicacion arriba como titulo, nombre+precio abajo como descripcion
+function rowPropiedad(
+    nombre: string,
+    ciudad: string,
+    sector: string,
+    precio: string,
+    id: string
+): { id: string; title: string; description: string } {
+    const ubicacion = [sector, ciudad].filter(Boolean).join(", ").slice(0, 24)
+    const detalle = [nombre, precio].filter(Boolean).join(" · ").slice(0, 72)
+    return {
+        id,
+        title: ubicacion || nombre.slice(0, 24),
+        description: detalle
+    }
 }
 
 function formatearDetallePropiedad(p: any): string {
@@ -1446,7 +1391,6 @@ function formatearDetallePropiedad(p: any): string {
     if (extrasActivos.length) lineas.push(`Adicionales: ${extrasActivos.join(", ")}`)
 
     if (pago) lineas.push(`Forma de pago: ${pago}`)
-
     if (p.descripcion) lineas.push(`\n${p.descripcion}`)
 
     return lineas.map((l, i) => l.startsWith("\n") ? l : `${i + 1}. ${l}`).join("\n")
@@ -1484,13 +1428,6 @@ function resolverTipo(input: string): string | null {
         "tipo_oficina": "oficina", "oficina": "oficina", "5": "oficina",
     }
     return mapa[input.toLowerCase()] || null
-}
-
-function emojiTipo(tipo: string): string {
-    const emojis: Record<string, string> = {
-        casa: "🏠", departamento: "🏢", terreno: "🌿", comercial: "🏪", oficina: "💼"
-    }
-    return emojis[tipo] || "🏠"
 }
 
 function interpretarTexto(text: string): {
