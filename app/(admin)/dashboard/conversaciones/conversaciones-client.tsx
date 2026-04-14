@@ -193,7 +193,18 @@ export default function ConversacionesClient({
                                     <div style={{
                                         fontSize: 13, fontWeight: 500, color: "var(--text)"
                                     }}>
-                                        {c.cliente.nombre}
+                                        {c.cliente.nombre === "Cliente WhatsApp"
+                                            ? c.cliente.celular
+                                            : c.cliente.nombre}
+                                    </div>
+                                    <div style={{
+                                        fontSize: 11, color: "var(--text3)", marginTop: 2,
+                                        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
+                                    }}>
+                                        {c.cliente.nombre === "Cliente WhatsApp"
+                                            ? "Sin verificar"
+                                            : c.cliente.celular
+                                        }
                                     </div>
                                     {c.cliente.verificado && (
                                         <span style={{ fontSize: 10, color: "var(--sg)" }}>✓</span>

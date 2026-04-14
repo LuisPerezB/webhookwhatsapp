@@ -134,7 +134,7 @@ export async function handleMessage({
     if (text === "agente" || text === "hablar con agente" || text === "humano" || btnId === "hablar_agente") {
         await activarModoManual(session, tenant, cliente)
         const tiempoManual = config?.tiempo_manual_min ?? 15
-        return `Un agente teatendera en breve. ⏳\n\nEn ${tiempoManual} minutos el asistente se reactivara automaticamente.`
+        return `Un agente te atendera en breve. ⏳\n\nEn ${tiempoManual} minutos el asistente se reactivara automaticamente.`
     }
 
     if (text === "bot" || text === "menu" || btnId === "menu_principal") {
@@ -209,7 +209,7 @@ export async function handleMessage({
         if (btnId === "btn_asesor" || text === "4" || text.includes("asesor")) {
             await activarModoManual(session, tenant, cliente)
             const tiempoManual = config?.tiempo_manual_min ?? 15
-            return `Un agente teatendera en breve. ⏳\n\nEn ${tiempoManual} minutos el asistente se reactivara automaticamente.`
+            return `Un agente te atendera en breve. ⏳\n\nEn ${tiempoManual} minutos el asistente se reactivara automaticamente.`
         }
 
         return await menuPrincipal(tenant, cliente, config)
@@ -608,7 +608,7 @@ export async function handleMessage({
                 .from("clientes")
                 .update({ celular_alternativo: from })
                 .eq("id", cedulaExistente.id)
-            return "Esta cedula ya esta registrada con otro numero. Tu numero ha sido registrado como contacto alternativo. Un agente teatendera."
+            return "Esta cedula ya esta registrada con otro numero. Tu numero ha sido registrado como contacto alternativo. Un agente te atendera."
         }
 
         const updateData: any = {

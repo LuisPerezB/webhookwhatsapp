@@ -20,6 +20,8 @@ export default function ClientesClient({
     clientesIniciales: Cliente[]
 }) {
     const router = useRouter()
+    const [editando, setEditando] = useState<Cliente | null>(null)
+    const [nuevoNombre, setNuevoNombre] = useState("")
     const [clientes, setClientes] = useState(clientesIniciales)
     const [busqueda, setBusqueda] = useState("")
     const [filtro, setFiltro] = useState("todos")
@@ -47,7 +49,29 @@ export default function ClientesClient({
             mostrarToast(nuevoEstado ? "Cliente bloqueado" : "Cliente desbloqueado")
         }
     }
+    const editarNombre = async () => {
+        if (!editando || !nuevoNombre.trim()) return
 
+        const res = await fetch("/api/admin/clientes", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                cliente_id: editando.id,
+                nombres_completos: nuevoNombre.trim()
+            })
+        })
+
+        if (res.ok) {
+            setClientes(prev =>
+                prev.map(c => c.id === editando.id
+                    ? { ...c, nombres_completos: nuevoNombre.trim() }
+                    : c
+                )
+            )
+            setEditando(null)
+            mostrarToast("Nombre actualizado ✓")
+        }
+    }
     const filtrados = clientes.filter(c => {
         if (filtro === "verificados" && !c.verificado) return false
         if (filtro === "sin_verificar" && c.verificado) return false
@@ -238,9 +262,32 @@ export default function ClientesClient({
                             </div>
 
                             {/* Acciones */}
+             // En el div de acciones de cada cliente
                             <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+                                {/* Botón editar nombre */}
                                 <button
-                                    onClick={() => router.push(`/dashboard/conversaciones`)}
+                                    onClick={() => {
+                                        setEditando(c)
+                                        setNuevoNombre(
+                                            c.nombres_completos === "Cliente WhatsApp" ? "" : c.nombres_completos
+                                        )
+                                    }}
+                                    title="Editar nombre / alias"
+                                    style={{
+                                        width: 28, height: 28, borderRadius: 6,
+                                        border: "0.5px solid var(--border2)",
+                                        background: "var(--surface2)", cursor: "pointer",
+                                        display: "flex", alignItems: "center",
+                                        justifyContent: "center", color: "var(--text2)",
+                                        fontSize: 13
+                                    }}
+                                >
+                                    ✎
+                                </button>
+
+                                {/* Ver conversación */}
+                                <button
+                                    onClick={() => router.push("/dashboard/conversaciones")}
                                     title="Ver conversación"
                                     style={{
                                         width: 28, height: 28, borderRadius: 6,
@@ -254,6 +301,8 @@ export default function ClientesClient({
                                         <path d="M14 10.5c0 .8-.7 1.5-1.5 1.5H4l-2.5 2.5V3.5C1.5 2.7 2.2 2 3 2h10c.8 0 1.5.7 1.5 1.5v7z" />
                                     </svg>
                                 </button>
+
+                                {/* Bloquear */}
                                 <button
                                     onClick={() => toggleBloqueo(c)}
                                     title={c.bloqueado ? "Desbloquear" : "Bloquear"}
@@ -274,7 +323,93 @@ export default function ClientesClient({
                     )
                 })}
             </div>
+            {/* Modal editar nombre */}
+            {editando && (
+                <div
+                    style={{
+                        position: "fixed", inset: 0,
+                        background: "rgba(0,0,0,0.4)",
+                        zIndex: 60, display: "flex",
+                        alignItems: "center", justifyContent: "center",
+                        padding: 20
+                    }}
+                    onClick={e => { if (e.target === e.currentTarget) setEditando(null) }}
+                >
+                    <div style={{
+                        background: "var(--surface)",
+                        borderRadius: 12, padding: 24,
+                        width: "100%", maxWidth: 380
+                    }}>
+                        <div style={{
+                            fontSize: 15, fontWeight: 500,
+                            color: "var(--text)", marginBottom: 4
+                        }}>
+                            Editar nombre
+                        </div>
+                        <div style={{
+                            fontSize: 12, color: "var(--text3)", marginBottom: 16
+                        }}>
+                            {editando.celular}
+                            {editando.ruc_ci && ` · CI: ${editando.ruc_ci}`}
+                        </div>
 
+                        <div style={{ marginBottom: 16 }}>
+                            <label style={{
+                                display: "block", fontSize: 10, fontWeight: 500,
+                                color: "var(--text3)", textTransform: "uppercase",
+                                letterSpacing: ".06em", marginBottom: 6
+                            }}>
+                                Nombre o alias
+                            </label>
+                            <input
+                                type="text"
+                                value={nuevoNombre}
+                                onChange={e => setNuevoNombre(e.target.value)}
+                                onKeyDown={e => { if (e.key === "Enter") editarNombre() }}
+                                placeholder={editando.celular}
+                                autoFocus
+                                style={{
+                                    width: "100%", padding: "9px 12px",
+                                    borderRadius: 8, border: "0.5px solid var(--border2)",
+                                    background: "var(--surface2)", color: "var(--text)",
+                                    fontFamily: "inherit", fontSize: 13, outline: "none"
+                                }}
+                            />
+                            <div style={{
+                                fontSize: 11, color: "var(--text3)", marginTop: 5
+                            }}>
+                                Si el cliente tiene cédula verificada, este campo
+                                sobreescribe el nombre del Registro Civil.
+                            </div>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 8 }}>
+                            <button
+                                onClick={() => setEditando(null)}
+                                style={{
+                                    flex: 1, padding: "8px 0", borderRadius: 7,
+                                    border: "0.5px solid var(--border2)",
+                                    background: "var(--surface2)", cursor: "pointer",
+                                    fontSize: 13, color: "var(--text)", fontFamily: "inherit"
+                                }}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={editarNombre}
+                                style={{
+                                    flex: 1, padding: "8px 0", borderRadius: 7,
+                                    background: "var(--accent)", color: "#fff",
+                                    border: "none", cursor: "pointer",
+                                    fontSize: 13, fontWeight: 500, fontFamily: "inherit"
+                                }}
+                            >
+                                Guardar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {toast && (
                 <div style={{
                     position: "fixed", bottom: 24, left: "50%",

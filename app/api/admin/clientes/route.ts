@@ -51,15 +51,20 @@ export async function GET(request: NextRequest) {
     })
 }
 
+// En app/api/admin/clientes/route.ts — actualiza el PATCH existente
 export async function PATCH(request: NextRequest) {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
 
-    const { cliente_id, bloqueado } = await request.json()
+    const { cliente_id, bloqueado, nombres_completos } = await request.json()
+
+    const updateData: any = {}
+    if (bloqueado !== undefined) updateData.bloqueado = bloqueado
+    if (nombres_completos !== undefined) updateData.nombres_completos = nombres_completos
 
     await supabase
         .from("clientes")
-        .update({ bloqueado })
+        .update(updateData)
         .eq("id", cliente_id)
 
     return NextResponse.json({ ok: true })

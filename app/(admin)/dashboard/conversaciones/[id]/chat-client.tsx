@@ -219,10 +219,15 @@ export default function ChatClient({
                     <div style={{
                         fontSize: 16, fontWeight: 500, color: "var(--text)"
                     }}>
-                        {cliente?.nombres_completos || "Cliente WhatsApp"}
+                        {cliente?.nombres_completos === "Cliente WhatsApp" || !cliente?.nombres_completos
+                            ? cliente?.celular
+                            : cliente?.nombres_completos}
                     </div>
                     <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                        {cliente?.celular}
+                        {cliente?.nombres_completos !== "Cliente WhatsApp" && cliente?.nombres_completos
+                            ? cliente?.celular
+                            : "Sin verificar"
+                        }
                         {cliente?.verificado && (
                             <span style={{ color: "var(--sg)", marginLeft: 6 }}>✓ verificado</span>
                         )}
