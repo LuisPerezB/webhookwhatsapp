@@ -130,6 +130,11 @@ export async function handleMessage({
     const btnId = buttonId || ""
     let state = session.contenido || {}
 
+    // LOG TEMPORAL
+    console.log("[Chatbot] step:", state.step)
+    console.log("[Chatbot] btnId:", btnId)
+    console.log("[Chatbot] text:", text)
+
     // COMANDOS GLOBALES
     if (text === "agente" || text === "hablar con agente" || text === "humano" || btnId === "hablar_agente") {
         await activarModoManual(session, tenant, cliente)
