@@ -1262,7 +1262,14 @@ async function mostrarHorariosPropiedad(
     }
 
     const ids = data.map(h => h.id)
-    await updateSession(sessionId, { ...state, horarios_ids: ids })
+
+    // ← AQUÍ: step cambia a agendar_propiedad + guarda horarios_ids
+    await updateSession(sessionId, {
+        ...state,
+        step: "agendar_propiedad",
+        propiedad_id: propiedadId,
+        horarios_ids: ids
+    })
 
     return {
         tipo: "list",
@@ -1318,7 +1325,14 @@ async function mostrarHorariosProyecto(
     }
 
     const ids = data.map(h => h.id)
-    await updateSession(sessionId, { ...state, horarios_ids: ids })
+
+    // ← AQUÍ: step cambia a agendar_proyecto + guarda horarios_ids
+    await updateSession(sessionId, {
+        ...state,
+        step: "agendar_proyecto",
+        proyecto_id: proyectoId,
+        horarios_ids: ids
+    })
 
     return {
         tipo: "list",
@@ -1339,7 +1353,6 @@ async function mostrarHorariosProyecto(
         }
     }
 }
-
 async function listarCitasCliente(clienteId: number, tenantId: number): Promise<Respuesta> {
     const { data } = await supabase
         .from("reservas")
