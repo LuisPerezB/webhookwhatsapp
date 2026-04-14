@@ -8,13 +8,18 @@ export default async function ChatPage({
 }: {
     params: { id: string }
 }) {
+    const { id } = await params
     const session = await getSession()
     if (!session) redirect("/auth/login")
 
-    const sesionId = parseInt(params.id)
+    const sesionId = parseInt(id)
+    if (isNaN(sesionId)) redirect("/dashboard/conversaciones")
 
-    // Sesión + cliente
-    const { data: sesion } = await supabase
+    // LOG TEMPORAL
+    console.log("[Chat] sesionId:", sesionId)
+    console.log("[Chat] tenantId:", session.tenantId)
+
+    const { data: sesion, error } = await supabase
         .from("chat_sesiones")
         .select(`
             id, modo, updated_at, contenido, agente_id,
@@ -28,7 +33,14 @@ export default async function ChatPage({
         .is("deleted_at", null)
         .single()
 
-    if (!sesion) redirect("/dashboard/conversaciones")
+    // LOG TEMPORAL
+    console.log("[Chat] sesion:", JSON.stringify(sesion))
+    console.log("[Chat] error:", JSON.stringify(error))
+
+    if (error || !sesion) {
+        console.log("[Chat] Redirigiendo — sesion no encontrada")
+        redirect("/dashboard/conversaciones")
+    }
 
     // Mensajes
     const { data: mensajes } = await supabase
