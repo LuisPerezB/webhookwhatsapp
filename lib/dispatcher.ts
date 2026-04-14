@@ -483,7 +483,14 @@ async function procesarComandoControl({
     texto, buttonId, from, tenant, config, phoneNumberId, session,
 }: any): Promise<boolean> {
     const botControlNumbers: string[] = config.bot_control_numbers ?? []
-    if (!botControlNumbers.includes(from)) return false
+
+    // Normalizar — quitar +, espacios y guiones para comparar
+    const fromNorm = from.replace(/[\s+\-]/g, "")
+    const match = botControlNumbers.some(n =>
+        n.replace(/[\s+\-]/g, "") === fromNorm
+    )
+
+    if (!match) return false
 
     const cmd = (texto || "").toLowerCase().trim()
     let respuesta = ""

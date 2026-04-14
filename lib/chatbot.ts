@@ -53,7 +53,7 @@ export async function handleLink({
         const fotos = prop.fotos as any[]
         if (fotos?.length > 0) {
             const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
-            if (url) await sendWhatsAppImage(phoneNumberId, cliente.celular, url, prop.nombre).catch(() => {})
+            if (url) await sendWhatsAppImage(phoneNumberId, cliente.celular, url, prop.nombre).catch(() => { })
         }
 
         return {
@@ -97,7 +97,7 @@ export async function handleLink({
         const fotos = proy.fotos as any[]
         if (fotos?.length > 0) {
             const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
-            if (url) await sendWhatsAppImage(phoneNumberId, cliente.celular, url, proy.nombre).catch(() => {})
+            if (url) await sendWhatsAppImage(phoneNumberId, cliente.celular, url, proy.nombre).catch(() => { })
         }
 
         return {
@@ -276,9 +276,9 @@ export async function handleMessage({
     if (state.step === "filtro_operacion") {
         const operacion = btnId === "op_venta" ? "venta"
             : btnId === "op_alquiler" ? "alquiler"
-            : text.includes("comprar") || text.includes("venta") ? "venta"
-            : text.includes("alquil") || text.includes("arrend") ? "alquiler"
-            : null
+                : text.includes("comprar") || text.includes("venta") ? "venta"
+                    : text.includes("alquil") || text.includes("arrend") ? "alquiler"
+                        : null
 
         if (!operacion) {
             return {
@@ -293,8 +293,12 @@ export async function handleMessage({
             }
         }
 
+        // En filtro_operacion — después de definir operacion:
         await updateSession(session.id, { ...state, step: "filtro_ciudad", operacion })
-        return await listaCiudades()
+        return await listaCiudades(tenant.id, operacion, state.tipo)
+
+        // En filtro_tipo — si quisieras pre-filtrar desde el tipo (opcional):
+        // No es necesario aquí porque aún no saben la operación
     }
 
     // FILTRO CIUDAD
@@ -313,7 +317,7 @@ export async function handleMessage({
                 .from("ciudades").select("nombre").eq("id", ciudadId).single()
             ciudadNombre = c?.nombre || ""
         } else if (text) {
-            const resultado = await buscarCiudadFuzzy(text)
+            const resultado = await buscarCiudadFuzzy(text, tenant.id, state.operacion, state.tipo)
             if (resultado) { ciudadId = resultado.id; ciudadNombre = resultado.nombre }
         }
 
@@ -328,7 +332,7 @@ export async function handleMessage({
 
     // FILTRO CIUDAD TEXTO (Otra ciudad)
     if (state.step === "filtro_ciudad_texto") {
-        const resultado = await buscarCiudadFuzzy(text)
+        const resultado = await buscarCiudadFuzzy(text, tenant.id, state.operacion, state.tipo)
 
         if (!resultado) return "No encontre esa ciudad. Intenta de nuevo:"
 
@@ -742,7 +746,7 @@ async function mostrarDetallePropiedad(
     if (fotos?.length > 0) {
         const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
         if (url && phoneNumberId && from) {
-            await sendWhatsAppImage(phoneNumberId, from, url, prop.nombre).catch(() => {})
+            await sendWhatsAppImage(phoneNumberId, from, url, prop.nombre).catch(() => { })
         }
     }
 
@@ -799,7 +803,7 @@ async function mostrarDetalleProyecto(
     if (fotos?.length > 0) {
         const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
         if (url && phoneNumberId && from) {
-            await sendWhatsAppImage(phoneNumberId, from, url, proy.nombre).catch(() => {})
+            await sendWhatsAppImage(phoneNumberId, from, url, proy.nombre).catch(() => { })
         }
     }
 
@@ -821,18 +825,50 @@ async function mostrarDetalleProyecto(
 }
 
 async function buscarCiudadFuzzy(
-    texto: string
+    texto: string,
+    tenantId?: number,
+    tipoOperacion?: string,
+    tipoPropiedad?: string
 ): Promise<{ id: number; nombre: string } | null> {
-    const { data } = await supabase
-        .from("ciudades")
-        .select("id, nombre")
-        .is("deleted_at", null)
-        .order("nombre")
 
-    if (!data?.length) return null
+    let ciudades: any[] = []
+
+    if (tenantId) {
+        // Buscar solo entre ciudades con propiedades del tenant
+        let query = supabase
+            .from("propiedades")
+            .select("ciudad_id, ciudades:ciudad_id(id, nombre)")
+            .eq("tenant_id", tenantId)
+            .eq("estado", "disponible")
+            .is("deleted_at", null)
+            .is("proyecto_id", null)
+
+        if (tipoOperacion) query = query.eq("tipo_operacion", tipoOperacion)
+        if (tipoPropiedad) query = query.eq("tipo_propiedad", tipoPropiedad)
+
+        const { data } = await query
+
+        const vistas = new Set<number>()
+        data?.forEach((p: any) => {
+            if (p.ciudades && !vistas.has(p.ciudades.id)) {
+                vistas.add(p.ciudades.id)
+                ciudades.push(p.ciudades)
+            }
+        })
+    } else {
+        // Fallback: todas las ciudades
+        const { data } = await supabase
+            .from("ciudades")
+            .select("id, nombre")
+            .is("deleted_at", null)
+            .order("nombre")
+        ciudades = data || []
+    }
+
+    if (!ciudades.length) return null
 
     const Fuse = (await import("fuse.js")).default
-    const fuse = new Fuse(data, { keys: ["nombre"], threshold: 0.4 })
+    const fuse = new Fuse(ciudades, { keys: ["nombre"], threshold: 0.4 })
     const resultados = fuse.search(texto)
     return resultados.length > 0 ? (resultados[0].item as any) : null
 }
@@ -992,44 +1028,66 @@ async function listaTipoPropiedad(): Promise<Respuesta> {
     }
 }
 
-async function listaCiudades(): Promise<Respuesta> {
-    const { data } = await supabase
-        .from("ciudades")
-        .select(`
-            id, nombre,
-            provincia:provincia_id(nombre)
-        `)
+async function listaCiudades(tenantId: number, tipoOperacion?: string, tipoPropiedad?: string): Promise<Respuesta> {
+    // Solo ciudades con propiedades disponibles del tenant
+    let query = supabase
+        .from("propiedades")
+        .select("ciudad_id, ciudades:ciudad_id(id, nombre, provincia:provincia_id(nombre))")
+        .eq("tenant_id", tenantId)
+        .eq("estado", "disponible")
         .is("deleted_at", null)
-        .order("nombre")
+        .is("proyecto_id", null) // solo independientes
 
-    if (!data?.length) return "Escribe el nombre de la ciudad donde buscas:"
+    if (tipoOperacion) query = query.eq("tipo_operacion", tipoOperacion)
+    if (tipoPropiedad) query = query.eq("tipo_propiedad", tipoPropiedad)
 
-    const principales = [
-        "Guayaquil", "Quito", "Cuenca", "Manta", "Ambato",
-        "Machala", "Santo Domingo", "Ibarra", "Loja", "Portoviejo"
-    ]
+    const { data } = await query
 
-    const rows: any[] = data
-        .filter((c: any) => principales.includes(c.nombre))
-        .slice(0, 9)
-        .map((c: any) => ({
-            id: `ciudad_${c.id}`,
-            title: c.nombre,
-            description: (c.provincia as any)?.nombre || ""
-        }))
+    if (!data?.length) {
+        return "Escribe el nombre de la ciudad donde buscas:"
+    }
 
-    rows.push({
-        id: "ciudad_otra",
-        title: "Otra ciudad",
-        description: "Escribe el nombre a continuacion"
+    // Deduplicar ciudades
+    const ciudadesVistas = new Set<number>()
+    const ciudadesUnicas: any[] = []
+
+    data.forEach((p: any) => {
+        const ciudad = p.ciudades
+        if (ciudad && !ciudadesVistas.has(ciudad.id)) {
+            ciudadesVistas.add(ciudad.id)
+            ciudadesUnicas.push(ciudad)
+        }
     })
+
+    // Ordenar alfabéticamente
+    ciudadesUnicas.sort((a, b) => a.nombre.localeCompare(b.nombre))
+
+    if (!ciudadesUnicas.length) {
+        return "Escribe el nombre de la ciudad donde buscas:"
+    }
+
+    // Si caben en la lista (máx 9 + "Otra")
+    const rows: any[] = ciudadesUnicas.slice(0, 9).map(c => ({
+        id: `ciudad_${c.id}`,
+        title: c.nombre,
+        description: c.provincia?.nombre || ""
+    }))
+
+    // Solo agregar "Otra ciudad" si hay más de 9
+    if (ciudadesUnicas.length > 9) {
+        rows.push({
+            id: "ciudad_otra",
+            title: "Otra ciudad",
+            description: "Escribe el nombre a continuacion"
+        })
+    }
 
     return {
         tipo: "list",
         payload: {
-            body: "Selecciona la ciudad o escribe el nombre directamente:",
+            body: "Selecciona la ciudad donde buscas:",
             buttonText: "Ver ciudades",
-            sections: [{ title: "Ciudades principales", rows }]
+            sections: [{ title: "Ciudades disponibles", rows }]
         }
     }
 }
