@@ -134,7 +134,8 @@ export async function handleMessage({
     console.log("[Chatbot] step:", state.step)
     console.log("[Chatbot] btnId:", btnId)
     console.log("[Chatbot] text:", text)
-
+    console.log("[Chatbot] propiedad_id:", state.propiedad_id)
+    console.log("[Chatbot] horarios_ids:", state.horarios_ids)
     // COMANDOS GLOBALES
     if (text === "agente" || text === "hablar con agente" || text === "humano" || btnId === "hablar_agente") {
         await activarModoManual(session, tenant, cliente)
