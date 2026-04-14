@@ -53,10 +53,15 @@ export default function ChatClient({
             const data = await res.json()
             setMensajes(data.mensajes || [])
             setModo(data.sesion.modo)
-        } catch {}
+        } catch { }
     }, [sesionInicial.id])
 
+    // En chat-client.tsx, reemplaza el useEffect del polling
     useEffect(() => {
+        // Cargar mensajes frescos al montar
+        cargarMensajes()
+
+        // Polling cada 5 segundos
         pollingRef.current = setInterval(cargarMensajes, 5000)
         return () => {
             if (pollingRef.current) clearInterval(pollingRef.current)
@@ -296,10 +301,12 @@ export default function ChatClient({
                                         style={{
                                             display: "flex",
                                             flexDirection: "column",
+                                            // Agente → derecha, Cliente y Bot → izquierda
                                             alignItems: esAgente ? "flex-end" : "flex-start",
-                                            gap: 2, marginBottom: 6
+                                            gap: 2, marginBottom: 8
                                         }}
                                     >
+                                        {/* Etiqueta origen */}
                                         <div style={{
                                             fontSize: 10, color: "var(--text3)",
                                             padding: "0 4px",
@@ -307,15 +314,19 @@ export default function ChatClient({
                                         }}>
                                             {esAgente ? "asesor" : esBot ? "bot" : "cliente"}
                                         </div>
+
+                                        {/* Burbuja */}
                                         <div style={{
                                             maxWidth: "75%",
-                                            padding: "8px 11px",
+                                            padding: "8px 12px",
                                             borderRadius: esAgente
-                                                ? "10px 2px 10px 10px"
-                                                : "2px 10px 10px 10px",
-                                            fontSize: 13, lineHeight: 1.5,
+                                                ? "12px 2px 12px 12px"   // derecha
+                                                : "2px 12px 12px 12px",  // izquierda
+                                            fontSize: 13,
+                                            lineHeight: 1.5,
                                             wordBreak: "break-word",
                                             whiteSpace: "pre-wrap",
+                                            // Agente = verde, Bot = azul claro, Cliente = blanco
                                             background: esAgente
                                                 ? "var(--accent)"
                                                 : esBot
@@ -324,9 +335,12 @@ export default function ChatClient({
                                             color: esAgente ? "#fff" : "var(--text)",
                                             border: esCliente
                                                 ? "0.5px solid var(--border)" : "none",
+                                            boxShadow: "0 1px 2px rgba(0,0,0,0.06)"
                                         }}>
                                             {m.contenido}
                                         </div>
+
+                                        {/* Hora */}
                                         <div style={{
                                             fontSize: 9, color: "var(--text3)",
                                             padding: "0 4px"

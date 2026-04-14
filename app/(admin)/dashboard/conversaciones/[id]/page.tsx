@@ -43,14 +43,16 @@ export default async function ChatPage({
     }
 
     // Mensajes
-    const { data: mensajes } = await supabase
+    const { data: mensajesRaw } = await supabase
         .from("mensajes")
         .select("id, origen, contenido, created_at")
         .eq("sesion_id", sesionId)
         .is("deleted_at", null)
-        .order("created_at", { ascending: true })
+        .order("created_at", { ascending: false })  // desc para traer los más recientes
         .limit(100)
 
+    // Invertir para mostrar en orden cronológico
+    const mensajes = (mensajesRaw || []).reverse()
     // Propiedades y proyectos para enviar desde el asesor
     const [{ data: propiedades }, { data: proyectos }] = await Promise.all([
         supabase
