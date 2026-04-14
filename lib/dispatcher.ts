@@ -22,7 +22,7 @@ export async function dispatchMessage({
     // 1. WHATSAPP NUMBER
     const { data: whatsappNumber } = await supabase
         .from("whatsapp_numbers")
-        .select("*")
+        .select("*, access_token")
         .eq("phone_number_id", phoneNumberIdStr)
         .eq("activo", true)
         .is("deleted_at", null)
@@ -32,6 +32,7 @@ export async function dispatchMessage({
         console.log("[Dispatcher] Número no encontrado:", phoneNumberIdStr)
         return
     }
+    const token = whatsappNumber.access_token || process.env.WHATSAPP_TOKEN
 
     // 2. TENANT
     const { data: tenant } = await supabase
@@ -162,7 +163,11 @@ export async function dispatchMessage({
             })
 
             if (respuesta) {
-                await enviarYGuardar(phoneNumberIdStr, from, respuesta, session, tenant.id, cliente.id)
+                await enviarYGuardar(
+                    phoneNumberIdStr, from, respuesta,
+                    session, tenant.id, cliente.id,
+                    token  // ← pasar token
+                )
             }
             return
         }
@@ -234,13 +239,9 @@ export async function dispatchMessage({
 
     // 11. COMANDO DE CONTROL
     const esComando = await procesarComandoControl({
-        texto: textoMensaje,
-        buttonId,
-        from,
-        tenant,
-        config,
-        phoneNumberId: phoneNumberIdStr,
-        session,
+        texto: textoMensaje, buttonId, from, tenant,
+        config, phoneNumberId: phoneNumberIdStr,
+        session, token  // ← pasar token
     })
     if (esComando) return
 
@@ -259,7 +260,11 @@ export async function dispatchMessage({
 
     // 13. RESPONDER Y GUARDAR
     if (respuesta) {
-        await enviarYGuardar(phoneNumberIdStr, from, respuesta, session, tenant.id, cliente.id)
+        await enviarYGuardar(
+            phoneNumberIdStr, from, respuesta,
+            session, tenant.id, cliente.id,
+            token  // ← pasar token
+        )
     }
 }
 
@@ -391,26 +396,31 @@ async function enviarYGuardar(
     respuesta: string | { tipo: "buttons" | "list" | "image"; payload: any },
     session: any,
     tenantId: number,
-    clienteId: number
+    clienteId: number,
+    token?: string  // ← nuevo parámetro
 ) {
     let messageId: string | null = null
     let contenido = ""
 
     try {
         if (typeof respuesta === "string") {
-            messageId = await sendWhatsAppMessage(phoneNumberId, to, respuesta)
+            messageId = await sendWhatsAppMessage(phoneNumberId, to, respuesta, token)
             contenido = respuesta
         } else if (respuesta.tipo === "buttons") {
             const { body, buttons, header, footer } = respuesta.payload
-            messageId = await sendWhatsAppButtons(phoneNumberId, to, body, buttons, header, footer)
+            messageId = await sendWhatsAppButtons(
+                phoneNumberId, to, body, buttons, header, footer, token
+            )
             contenido = body
         } else if (respuesta.tipo === "list") {
             const { body, buttonText, sections, header, footer } = respuesta.payload
-            messageId = await sendWhatsAppList(phoneNumberId, to, body, buttonText, sections, header, footer)
+            messageId = await sendWhatsAppList(
+                phoneNumberId, to, body, buttonText, sections, header, footer, token
+            )
             contenido = body
         } else if (respuesta.tipo === "image") {
             const { imageUrl, caption } = respuesta.payload
-            messageId = await sendWhatsAppImage(phoneNumberId, to, imageUrl, caption)
+            messageId = await sendWhatsAppImage(phoneNumberId, to, imageUrl, caption, token)
             contenido = caption || imageUrl
         }
 
@@ -480,16 +490,13 @@ async function procesarRespuestaEnModoManual({
 }
 
 async function procesarComandoControl({
-    texto, buttonId, from, tenant, config, phoneNumberId, session,
+    texto, buttonId, from, tenant, config, phoneNumberId, session, token
 }: any): Promise<boolean> {
     const botControlNumbers: string[] = config.bot_control_numbers ?? []
-
-    // Normalizar — quitar +, espacios y guiones para comparar
     const fromNorm = from.replace(/[\s+\-]/g, "")
     const match = botControlNumbers.some(n =>
         n.replace(/[\s+\-]/g, "") === fromNorm
     )
-
     if (!match) return false
 
     const cmd = (texto || "").toLowerCase().trim()
@@ -499,15 +506,15 @@ async function procesarComandoControl({
     if (cmd.startsWith("modo manual")) {
         const celular = cmd.replace("modo manual", "").trim()
         await cambiarModoSesion(celular, tenant.id, "manual")
-        respuesta = `✅ Modo manual activado para ${celular}`
+        respuesta = `Modo manual activado para ${celular}`
     } else if (cmd.startsWith("modo auto")) {
         const celular = cmd.replace("modo auto", "").trim()
         await cambiarModoSesion(celular, tenant.id, "automatico")
-        respuesta = `✅ Modo automático activado para ${celular}`
+        respuesta = `Modo automatico activado para ${celular}`
     } else if (cmd.startsWith("pausar")) {
         const celular = cmd.replace("pausar", "").trim()
         await cambiarModoSesion(celular, tenant.id, "pausado")
-        respuesta = `⏸️ Bot pausado para ${celular}`
+        respuesta = `Bot pausado para ${celular}`
     } else if (cmd === "citas hoy") {
         respuesta = await resumenCitasHoy(tenant.id)
     } else if (cmd === "leads hoy") {
@@ -517,7 +524,7 @@ async function procesarComandoControl({
     }
 
     if (esComando && respuesta) {
-        await sendWhatsAppMessage(phoneNumberId, from, respuesta)
+        await sendWhatsAppMessage(phoneNumberId, from, respuesta, token) // ← token
         await supabase.from("bot_comandos").insert({
             tenant_id: tenant.id,
             user_id: 1,

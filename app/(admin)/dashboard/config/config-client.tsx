@@ -282,11 +282,11 @@ export default function ConfigClient({ configInicial, tenant, numbers, user }: P
                                     }}
                                     onMouseEnter={e => {
                                         (e.currentTarget as HTMLElement).style.background = "var(--srb)"
-                                        ;(e.currentTarget as HTMLElement).style.color = "var(--sr)"
+                                            ; (e.currentTarget as HTMLElement).style.color = "var(--sr)"
                                     }}
                                     onMouseLeave={e => {
                                         (e.currentTarget as HTMLElement).style.background = "var(--surface2)"
-                                        ;(e.currentTarget as HTMLElement).style.color = "var(--text2)"
+                                            ; (e.currentTarget as HTMLElement).style.color = "var(--text2)"
                                     }}
                                 >
                                     ✕
@@ -327,25 +327,61 @@ export default function ConfigClient({ configInicial, tenant, numbers, user }: P
 
                 {/* Números WhatsApp registrados */}
                 <Seccion titulo="Números de WhatsApp">
+                    {/* En la sección de Números de WhatsApp */}
                     {numbers.map(n => (
                         <div key={n.id} style={{
-                            display: "flex", alignItems: "center",
-                            justifyContent: "space-between", padding: "6px 0"
+                            padding: "10px 0",
+                            borderBottom: "0.5px solid var(--border)"
                         }}>
-                            <div>
-                                <div style={{ fontSize: 13, color: "var(--text)" }}>{n.numero}</div>
-                                <div style={{ fontSize: 10, color: "var(--text3)" }}>
-                                    ID: {n.phone_number_id}
-                                </div>
-                            </div>
-                            <span style={{
-                                padding: "2px 8px", borderRadius: 20,
-                                fontSize: 10, fontWeight: 500,
-                                background: n.activo ? "var(--sgb)" : "var(--sgrb)",
-                                color: n.activo ? "var(--sg)" : "var(--sgr)"
+                            <div style={{
+                                display: "flex", alignItems: "center",
+                                justifyContent: "space-between", marginBottom: 8
                             }}>
-                                {n.activo ? "activo" : "inactivo"}
-                            </span>
+                                <div>
+                                    <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 500 }}>
+                                        {n.numero}
+                                    </div>
+                                    <div style={{ fontSize: 10, color: "var(--text3)" }}>
+                                        ID: {n.phone_number_id}
+                                    </div>
+                                </div>
+                                <span style={{
+                                    padding: "2px 8px", borderRadius: 20,
+                                    fontSize: 10, fontWeight: 500,
+                                    background: n.activo ? "var(--sgb)" : "var(--sgrb)",
+                                    color: n.activo ? "var(--sg)" : "var(--sgr)"
+                                }}>
+                                    {n.activo ? "activo" : "inactivo"}
+                                </span>
+                            </div>
+
+                            {/* Token */}
+                            <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+                                <input
+                                    type="password"
+                                    defaultValue={n.access_token || ""}
+                                    placeholder="Token permanente de Meta Business API"
+                                    onBlur={async e => {
+                                        const nuevoToken = e.target.value.trim()
+                                        if (!nuevoToken || nuevoToken === n.access_token) return
+                                        await fetch(`/api/admin/whatsapp/${n.id}`, {
+                                            method: "PATCH",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ access_token: nuevoToken })
+                                        })
+                                        mostrarToast("Token actualizado ✓")
+                                    }}
+                                    style={{
+                                        flex: 1, padding: "6px 9px",
+                                        borderRadius: 7, border: "0.5px solid var(--border2)",
+                                        background: "var(--surface2)", color: "var(--text)",
+                                        fontFamily: "inherit", fontSize: 12, outline: "none"
+                                    }}
+                                />
+                            </div>
+                            <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 4 }}>
+                                El token se obtiene en Meta Business Suite → Configuración → Tokens de acceso
+                            </div>
                         </div>
                     ))}
                 </Seccion>

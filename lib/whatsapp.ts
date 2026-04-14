@@ -3,14 +3,15 @@ const WA_API = "https://graph.facebook.com/v21.0"
 export async function sendWhatsAppMessage(
     phoneNumberId: string,
     to: string,
-    text: string
+    text: string,
+    accessToken?: string
 ): Promise<string | null> {
     return await sendWA(phoneNumberId, {
         messaging_product: "whatsapp",
         to,
         type: "text",
         text: { body: text, preview_url: false },
-    })
+    }, accessToken)
 }
 
 export async function sendWhatsAppButtons(
@@ -19,7 +20,8 @@ export async function sendWhatsAppButtons(
     body: string,
     buttons: { id: string; title: string }[],
     header?: string,
-    footer?: string
+    footer?: string,
+    accessToken?: string
 ): Promise<string | null> {
     return await sendWA(phoneNumberId, {
         messaging_product: "whatsapp",
@@ -40,7 +42,7 @@ export async function sendWhatsAppButtons(
                 }))
             }
         }
-    })
+    }, accessToken)
 }
 
 export async function sendWhatsAppList(
@@ -53,7 +55,8 @@ export async function sendWhatsAppList(
         rows: { id: string; title: string; description?: string }[]
     }[],
     header?: string,
-    footer?: string
+    footer?: string,
+    accessToken?: string
 ): Promise<string | null> {
     return await sendWA(phoneNumberId, {
         messaging_product: "whatsapp",
@@ -78,14 +81,15 @@ export async function sendWhatsAppList(
                 }))
             }
         }
-    })
+    }, accessToken)
 }
 
 export async function sendWhatsAppImage(
     phoneNumberId: string,
     to: string,
     imageUrl: string,
-    caption?: string
+    caption?: string,
+    accessToken?: string
 ): Promise<string | null> {
     return await sendWA(phoneNumberId, {
         messaging_product: "whatsapp",
@@ -95,19 +99,21 @@ export async function sendWhatsAppImage(
             link: imageUrl,
             ...(caption && { caption: caption.slice(0, 1024) })
         }
-    })
+    }, accessToken)
 }
 
 async function sendWA(
     phoneNumberId: string,
-    payload: any
+    payload: any,
+    accessToken?: string
 ): Promise<string | null> {
+    const token = accessToken || process.env.WHATSAPP_TOKEN
     const url = `${WA_API}/${phoneNumberId}/messages`
 
     const res = await fetch(url, {
         method: "POST",
         headers: {
-            Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+            Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
