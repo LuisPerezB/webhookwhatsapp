@@ -261,8 +261,6 @@ export default function ClientesClient({
                                 </div>
                             </div>
 
-                            {/* Acciones */}
-             // En el div de acciones de cada cliente
                             <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
                                 {/* Botón editar nombre */}
                                 <button
