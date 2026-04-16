@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import { useRealtime } from "@/lib/useRealtime"
 
 interface Conversacion {
     id: number
@@ -19,9 +20,51 @@ export default function ConversacionesClient({
     conversaciones: Conversacion[]
 }) {
     const router = useRouter()
-    const [conversaciones] = useState(inicial)
+    const [conversaciones, setConversaciones] = useState(inicial) // ← setter agregado
     const [filtroModo, setFiltroModo] = useState<string>("todos")
     const [busqueda, setBusqueda] = useState("")
+
+    // SSE — debe estar antes del return, después de los useState
+    useRealtime(useCallback((event) => {
+        if (event.tipo !== "actualizacion") return
+
+        const { mensajes, notificaciones } = event
+
+        setConversaciones(prev => {
+            let actualizado = [...prev]
+
+            mensajes?.forEach((m: any) => {
+                const idx = actualizado.findIndex(c => c.id === m.sesion_id)
+                if (idx >= 0) {
+                    actualizado[idx] = {
+                        ...actualizado[idx],
+                        ultimo_mensaje: {
+                            contenido: m.contenido,
+                            origen: m.origen,
+                            created_at: m.created_at
+                        },
+                        updated_at: m.created_at
+                    }
+                }
+            })
+
+            notificaciones?.forEach((n: any) => {
+                const idx = actualizado.findIndex(c => c.id === n.sesion_id)
+                if (idx >= 0) {
+                    actualizado[idx] = {
+                        ...actualizado[idx],
+                        notificaciones: (actualizado[idx].notificaciones || 0) + 1
+                    }
+                }
+            })
+
+            actualizado.sort((a, b) =>
+                new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+            )
+
+            return actualizado
+        })
+    }, []))
 
     const filtradas = conversaciones.filter(c => {
         if (filtroModo !== "todos" && c.modo !== filtroModo) return false
@@ -91,7 +134,6 @@ export default function ConversacionesClient({
                 gap: 8, alignItems: "center",
                 marginBottom: 14
             }}>
-                {/* Búsqueda */}
                 <input
                     type="text"
                     placeholder="Buscar por nombre o número..."
@@ -105,8 +147,6 @@ export default function ConversacionesClient({
                         fontFamily: "inherit", fontSize: 12, outline: "none"
                     }}
                 />
-
-                {/* Chips de modo */}
                 <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                     {filtros.map(f => (
                         <button
@@ -197,15 +237,6 @@ export default function ConversacionesClient({
                                             ? c.cliente.celular
                                             : c.cliente.nombre}
                                     </div>
-                                    <div style={{
-                                        fontSize: 11, color: "var(--text3)", marginTop: 2,
-                                        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
-                                    }}>
-                                        {c.cliente.nombre === "Cliente WhatsApp"
-                                            ? "Sin verificar"
-                                            : c.cliente.celular
-                                        }
-                                    </div>
                                     {c.cliente.verificado && (
                                         <span style={{ fontSize: 10, color: "var(--sg)" }}>✓</span>
                                     )}
@@ -217,7 +248,9 @@ export default function ConversacionesClient({
                                 }}>
                                     {c.ultimo_mensaje
                                         ? `${origenLabel}${c.ultimo_mensaje.contenido.slice(0, 60)}`
-                                        : c.cliente.celular
+                                        : c.cliente.nombre === "Cliente WhatsApp"
+                                            ? "Sin verificar"
+                                            : c.cliente.celular
                                     }
                                 </div>
                             </div>
@@ -237,10 +270,7 @@ export default function ConversacionesClient({
                                     {badge.label}
                                 </span>
                                 {c.step && (
-                                    <div style={{
-                                        fontSize: 9, color: "var(--text3)",
-                                        marginTop: 2
-                                    }}>
+                                    <div style={{ fontSize: 9, color: "var(--text3)", marginTop: 2 }}>
                                         {c.step}
                                     </div>
                                 )}

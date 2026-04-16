@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import { useRealtime } from "@/lib/useRealtime"
 
 interface Mensaje {
     id: number
@@ -45,28 +46,27 @@ export default function ChatClient({
         msgEndRef.current?.scrollIntoView({ behavior: "smooth" })
     }, [mensajes])
 
-    // Polling de mensajes nuevos
-    const cargarMensajes = useCallback(async () => {
-        try {
-            const res = await fetch(`/api/admin/conversaciones/${sesionInicial.id}`)
-            if (!res.ok) return
-            const data = await res.json()
-            setMensajes(data.mensajes || [])
-            setModo(data.sesion.modo)
-        } catch { }
-    }, [sesionInicial.id])
+    useRealtime(useCallback((event) => {
+        if (event.tipo !== "actualizacion") return
 
-    // En chat-client.tsx, reemplaza el useEffect del polling
-    useEffect(() => {
-        // Cargar mensajes frescos al montar
-        cargarMensajes()
+        // Filtrar mensajes de esta sesión
+        const nuevosMensajes = event.mensajes?.filter(
+            m => m.sesion_id === sesionInicial.id
+        ) || []
 
-        // Polling cada 5 segundos
-        pollingRef.current = setInterval(cargarMensajes, 5000)
-        return () => {
-            if (pollingRef.current) clearInterval(pollingRef.current)
+        if (nuevosMensajes.length > 0) {
+            setMensajes(prev => {
+                // Evitar duplicados por id
+                const idsExistentes = new Set(prev.map(m => m.id))
+                const sinDuplicados = nuevosMensajes.filter(
+                    (m: any) => !idsExistentes.has(m.id)
+                )
+                return sinDuplicados.length > 0 ? [...prev, ...sinDuplicados] : prev
+            })
         }
-    }, [cargarMensajes])
+    }, [sesionInicial.id]))
+
+
 
     const mostrarToast = (msg: string) => {
         setToast(msg)

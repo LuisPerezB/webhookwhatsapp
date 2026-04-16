@@ -1,6 +1,8 @@
 "use client"
 
 import { useState } from "react"
+import { FotoUploader, subirFotosPendientes } from "@/components/FotoUploader"
+import type { FotoItem } from "@/components/FotoUploader"
 
 interface Props {
     propiedadesIniciales: any[]
@@ -15,6 +17,13 @@ const OPERACIONES = ["venta", "alquiler"]
 const ESTADOS = ["disponible", "reservado", "vendido", "alquilado", "inactivo"]
 const FORMAS_PAGO = ["contado", "financiamiento", "biess"]
 
+const urlsAFotoItems = (fotos: any[]): FotoItem[] =>
+    (fotos || []).map((url: string) => ({
+        tipo: "remota" as const,
+        url,
+        preview: url
+    }))
+
 export default function PropiedadesClient({
     propiedadesIniciales, ciudades, sectores, proyectos, tenantId
 }: Props) {
@@ -28,8 +37,7 @@ export default function PropiedadesClient({
     const [toast, setToast] = useState("")
     const [ciudadSeleccionada, setCiudadSeleccionada] = useState<number | null>(null)
 
-    // Form state
-    const [form, setForm] = useState<any>({
+    const formVacio = {
         nombre: "", descripcion: "", tipo_propiedad: "casa",
         tipo_operacion: "venta", tipo_pago: ["contado"],
         precio: "", precio_negociable: false, estado: "disponible",
@@ -41,8 +49,10 @@ export default function PropiedadesClient({
         extras: { amoblado: false, ascensor: false, generador: false, cisterna: false, panel_solar: false },
         servicios: { agua: true, luz: true, gas: false, alcantarillado: true, internet: false, tv_cable: false },
         seguridad: { conjunto_cerrado: false, guardianía: false, camara_seguridad: false, alarma: false, cerca_electrica: false },
-        fotos: [],
-    })
+        fotos: [] as FotoItem[],
+    }
+
+    const [form, setForm] = useState<any>(formVacio)
 
     const mostrarToast = (msg: string) => {
         setToast(msg)
@@ -50,20 +60,8 @@ export default function PropiedadesClient({
     }
 
     const abrirNueva = () => {
-        setForm({
-            nombre: "", descripcion: "", tipo_propiedad: "casa",
-            tipo_operacion: "venta", tipo_pago: ["contado"],
-            precio: "", precio_negociable: false, estado: "disponible",
-            ciudad_id: "", sector_id: "", proyecto_id: "",
-            dimensiones: { m2_construccion: "", m2_terreno: "", m2_total: "", pisos: "" },
-            ambientes: { habitaciones: "", banos: "", medios_banos: "", sala: false, comedor: false, cocina: false, estudio: false },
-            exteriores: { patio: false, jardin: false, terraza: false, balcon: false, piscina: false, bbq: false },
-            estacionamiento: { estacionamientos: "", cubierto: false, bodega: false },
-            extras: { amoblado: false, ascensor: false, generador: false, cisterna: false, panel_solar: false },
-            servicios: { agua: true, luz: true, gas: false, alcantarillado: true, internet: false, tv_cable: false },
-            seguridad: { conjunto_cerrado: false, guardianía: false, camara_seguridad: false, alarma: false, cerca_electrica: false },
-            fotos: [],
-        })
+        setForm(formVacio)
+        setCiudadSeleccionada(null)
         setPropActual(null)
         setModal("nueva")
     }
@@ -88,7 +86,8 @@ export default function PropiedadesClient({
             extras: prop.extras || {},
             servicios: prop.servicios || {},
             seguridad: prop.seguridad || {},
-            fotos: prop.fotos || [],
+            // Convertir URLs guardadas a FotoItems
+            fotos: urlsAFotoItems(prop.fotos || []),
         })
         setCiudadSeleccionada(prop.ciudad?.id || null)
         setPropActual(prop)
@@ -102,6 +101,9 @@ export default function PropiedadesClient({
 
         setGuardando(true)
         try {
+            // 1. Subir fotos pendientes primero, conservar remotas
+            const fotosUrls = await subirFotosPendientes(form.fotos || [])
+
             const body = {
                 nombre: form.nombre,
                 descripcion: form.descripcion,
@@ -121,7 +123,7 @@ export default function PropiedadesClient({
                 extras: form.extras,
                 servicios: form.servicios,
                 seguridad: form.seguridad,
-                fotos: form.fotos,
+                fotos: fotosUrls, // ← URLs finales ya subidas
             }
 
             const url = modal === "editar"
@@ -141,14 +143,17 @@ export default function PropiedadesClient({
             }
 
             const data = await res.json()
+            const ciudadObj = ciudades.find(c => c.id === parseInt(form.ciudad_id))
 
             if (modal === "editar") {
                 setPropiedades(prev => prev.map(p =>
-                    p.id === propActual.id ? { ...p, ...body, ciudad: ciudades.find(c => c.id === parseInt(form.ciudad_id)) } : p
+                    p.id === propActual.id
+                        ? { ...p, ...body, fotos: fotosUrls, ciudad: ciudadObj }
+                        : p
                 ))
                 mostrarToast("Propiedad actualizada ✓")
             } else {
-                setPropiedades(prev => [data.propiedad, ...prev])
+                setPropiedades(prev => [{ ...data.propiedad, ciudad: ciudadObj }, ...prev])
                 mostrarToast("Propiedad creada ✓")
             }
 
@@ -214,15 +219,12 @@ export default function PropiedadesClient({
                 }}>
                     Propiedades
                 </div>
-                <button
-                    onClick={abrirNueva}
-                    style={{
-                        padding: "7px 14px", borderRadius: 7,
-                        background: "var(--accent)", color: "#fff",
-                        border: "none", cursor: "pointer",
-                        fontSize: 13, fontWeight: 500, fontFamily: "inherit"
-                    }}
-                >
+                <button onClick={abrirNueva} style={{
+                    padding: "7px 14px", borderRadius: 7,
+                    background: "var(--accent)", color: "#fff",
+                    border: "none", cursor: "pointer",
+                    fontSize: 13, fontWeight: 500, fontFamily: "inherit"
+                }}>
                     + Nueva propiedad
                 </button>
             </div>
@@ -235,10 +237,8 @@ export default function PropiedadesClient({
                 alignItems: "center", marginBottom: 14
             }}>
                 <input
-                    type="text"
-                    placeholder="Buscar..."
-                    value={busqueda}
-                    onChange={e => setBusqueda(e.target.value)}
+                    type="text" placeholder="Buscar..."
+                    value={busqueda} onChange={e => setBusqueda(e.target.value)}
                     style={{
                         flex: 1, minWidth: 150, padding: "6px 10px",
                         borderRadius: 7, border: "0.5px solid var(--border2)",
@@ -302,16 +302,16 @@ export default function PropiedadesClient({
                             ;(e.currentTarget as HTMLElement).style.borderColor = "var(--border)"
                         }}
                     >
-                        {/* Imagen / emoji */}
+                        {/* Imagen */}
                         <div style={{
                             height: 90, background: "var(--surface2)",
                             display: "flex", alignItems: "center",
                             justifyContent: "center", fontSize: 32,
-                            position: "relative"
+                            position: "relative", overflow: "hidden"
                         }}>
                             {p.fotos?.length > 0
                                 ? <img
-                                    src={typeof p.fotos[0] === "string" ? p.fotos[0] : p.fotos[0]?.url}
+                                    src={p.fotos[0]}
                                     alt={p.nombre}
                                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                                 />
@@ -349,7 +349,6 @@ export default function PropiedadesClient({
                                 {p.tipo_operacion === "alquiler" && "/mes"}
                             </div>
 
-                            {/* Footer */}
                             <div style={{
                                 display: "flex", alignItems: "center",
                                 justifyContent: "space-between",
@@ -374,12 +373,9 @@ export default function PropiedadesClient({
                                             border: "0.5px solid var(--border2)",
                                             background: "var(--surface2)", cursor: "pointer",
                                             display: "flex", alignItems: "center",
-                                            justifyContent: "center", fontSize: 11,
-                                            color: "var(--text2)"
+                                            justifyContent: "center", fontSize: 11, color: "var(--text2)"
                                         }}
-                                    >
-                                        ✎
-                                    </button>
+                                    >✎</button>
                                     <button
                                         onClick={e => { e.stopPropagation(); eliminar(p.id) }}
                                         style={{
@@ -387,8 +383,7 @@ export default function PropiedadesClient({
                                             border: "0.5px solid var(--border2)",
                                             background: "var(--surface2)", cursor: "pointer",
                                             display: "flex", alignItems: "center",
-                                            justifyContent: "center", fontSize: 11,
-                                            color: "var(--text2)"
+                                            justifyContent: "center", fontSize: 11, color: "var(--text2)"
                                         }}
                                         onMouseEnter={e => {
                                             (e.currentTarget as HTMLElement).style.background = "var(--srb)"
@@ -398,13 +393,10 @@ export default function PropiedadesClient({
                                             (e.currentTarget as HTMLElement).style.background = "var(--surface2)"
                                             ;(e.currentTarget as HTMLElement).style.color = "var(--text2)"
                                         }}
-                                    >
-                                        ✕
-                                    </button>
+                                    >✕</button>
                                 </div>
                             </div>
 
-                            {/* Consultas */}
                             {p.total_consultas > 0 && (
                                 <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 4 }}>
                                     {p.total_consultas} consulta(s) via bot
@@ -417,21 +409,19 @@ export default function PropiedadesClient({
 
             {/* MODAL */}
             {modal && (
-                <div style={{
-                    position: "fixed", inset: 0,
-                    background: "rgba(0,0,0,0.5)",
-                    zIndex: 60, display: "flex",
-                    alignItems: "flex-end", justifyContent: "center"
-                }}
+                <div
+                    style={{
+                        position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+                        zIndex: 60, display: "flex",
+                        alignItems: "flex-end", justifyContent: "center"
+                    }}
                     onClick={e => { if (e.target === e.currentTarget) setModal(null) }}
                 >
                     <div style={{
                         background: "var(--surface)", borderRadius: "14px 14px 0 0",
                         width: "100%", maxWidth: 640,
-                        maxHeight: "90vh", overflowY: "auto",
-                        padding: 24
+                        maxHeight: "90vh", overflowY: "auto", padding: 24
                     }}>
-                        {/* Modal header */}
                         <div style={{
                             display: "flex", alignItems: "center",
                             justifyContent: "space-between", marginBottom: 20
@@ -442,30 +432,24 @@ export default function PropiedadesClient({
                             }}>
                                 {modal === "nueva" ? "Nueva propiedad" : "Editar propiedad"}
                             </div>
-                            <button
-                                onClick={() => setModal(null)}
-                                style={{
-                                    padding: "4px 10px", borderRadius: 6,
-                                    border: "0.5px solid var(--border2)",
-                                    background: "var(--surface2)", cursor: "pointer",
-                                    fontSize: 11, color: "var(--text3)", fontFamily: "inherit"
-                                }}
-                            >
+                            <button onClick={() => setModal(null)} style={{
+                                padding: "4px 10px", borderRadius: 6,
+                                border: "0.5px solid var(--border2)",
+                                background: "var(--surface2)", cursor: "pointer",
+                                fontSize: 11, color: "var(--text3)", fontFamily: "inherit"
+                            }}>
                                 ✕ cerrar
                             </button>
                         </div>
 
-                        {/* Form */}
                         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
 
-                            {/* Nombre */}
                             <Campo label="Nombre">
                                 <input type="text" value={form.nombre}
                                     onChange={e => setForm((p: any) => ({ ...p, nombre: e.target.value }))}
                                     placeholder="Ej: Casa en Urb. Villa del Rey" />
                             </Campo>
 
-                            {/* Tipo + Operación */}
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                                 <Campo label="Tipo">
                                     <select value={form.tipo_propiedad}
@@ -489,7 +473,6 @@ export default function PropiedadesClient({
                                 </Campo>
                             </div>
 
-                            {/* Precio + Estado */}
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                                 <Campo label="Precio ($)">
                                     <input type="number" value={form.precio}
@@ -517,7 +500,6 @@ export default function PropiedadesClient({
                                 </Campo>
                             </div>
 
-                            {/* Formas de pago */}
                             <Campo label="Formas de pago">
                                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 4 }}>
                                     {FORMAS_PAGO.map(f => (
@@ -547,7 +529,6 @@ export default function PropiedadesClient({
                                 </div>
                             </Campo>
 
-                            {/* Ciudad + Sector */}
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                                 <Campo label="Ciudad">
                                     <select value={form.ciudad_id}
@@ -577,8 +558,7 @@ export default function PropiedadesClient({
                             <div>
                                 <div style={{
                                     fontSize: 11, fontWeight: 500, color: "var(--text3)",
-                                    textTransform: "uppercase", letterSpacing: ".05em",
-                                    marginBottom: 8
+                                    textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8
                                 }}>
                                     Dimensiones
                                 </div>
@@ -605,8 +585,7 @@ export default function PropiedadesClient({
                             <div>
                                 <div style={{
                                     fontSize: 11, fontWeight: 500, color: "var(--text3)",
-                                    textTransform: "uppercase", letterSpacing: ".05em",
-                                    marginBottom: 8
+                                    textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8
                                 }}>
                                     Ambientes
                                 </div>
@@ -645,12 +624,11 @@ export default function PropiedadesClient({
                                 </div>
                             </div>
 
-                            {/* Extras (checkboxes) */}
+                            {/* Extras */}
                             <div>
                                 <div style={{
                                     fontSize: 11, fontWeight: 500, color: "var(--text3)",
-                                    textTransform: "uppercase", letterSpacing: ".05em",
-                                    marginBottom: 8
+                                    textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8
                                 }}>
                                     Extras y amenidades
                                 </div>
@@ -690,7 +668,6 @@ export default function PropiedadesClient({
                                 </div>
                             </div>
 
-                            {/* Estacionamientos */}
                             <Campo label="Estacionamientos">
                                 <input type="number"
                                     value={form.estacionamiento.estacionamientos || ""}
@@ -705,7 +682,6 @@ export default function PropiedadesClient({
                                 />
                             </Campo>
 
-                            {/* Descripción */}
                             <Campo label="Descripción">
                                 <textarea
                                     value={form.descripcion}
@@ -715,43 +691,34 @@ export default function PropiedadesClient({
                                 />
                             </Campo>
 
-                            {/* URL de fotos */}
-                            <Campo label="URLs de fotos (una por línea)">
-                                <textarea
-                                    value={(form.fotos || []).join("\n")}
-                                    onChange={e => setForm((p: any) => ({
-                                        ...p,
-                                        fotos: e.target.value.split("\n").map((u: string) => u.trim()).filter(Boolean)
-                                    }))}
-                                    placeholder="https://ejemplo.com/foto1.jpg&#10;https://ejemplo.com/foto2.jpg"
-                                    rows={3}
+                            {/* FOTOS — uploader con preview local */}
+                            <Campo label="Fotos">
+                                <FotoUploader
+                                    fotosIniciales={propActual?.fotos || []}
+                                    fotos={form.fotos || []}
+                                    onChange={fotos => setForm((p: any) => ({ ...p, fotos }))}
                                 />
+                                <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 4 }}>
+                                    Las fotos se suben al guardar la propiedad. La primera es la portada.
+                                </div>
                             </Campo>
 
-                            {/* Acciones */}
                             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", paddingTop: 4 }}>
-                                <button
-                                    onClick={() => setModal(null)}
-                                    style={{
-                                        padding: "8px 16px", borderRadius: 7,
-                                        border: "0.5px solid var(--border2)",
-                                        background: "var(--surface2)", cursor: "pointer",
-                                        fontSize: 13, color: "var(--text)", fontFamily: "inherit"
-                                    }}
-                                >
+                                <button onClick={() => setModal(null)} style={{
+                                    padding: "8px 16px", borderRadius: 7,
+                                    border: "0.5px solid var(--border2)",
+                                    background: "var(--surface2)", cursor: "pointer",
+                                    fontSize: 13, color: "var(--text)", fontFamily: "inherit"
+                                }}>
                                     Cancelar
                                 </button>
-                                <button
-                                    onClick={guardar}
-                                    disabled={guardando}
-                                    style={{
-                                        padding: "8px 20px", borderRadius: 7,
-                                        background: "var(--accent)", color: "#fff",
-                                        border: "none", cursor: "pointer",
-                                        fontSize: 13, fontWeight: 500, fontFamily: "inherit",
-                                        opacity: guardando ? 0.6 : 1
-                                    }}
-                                >
+                                <button onClick={guardar} disabled={guardando} style={{
+                                    padding: "8px 20px", borderRadius: 7,
+                                    background: "var(--accent)", color: "#fff",
+                                    border: "none", cursor: "pointer",
+                                    fontSize: 13, fontWeight: 500, fontFamily: "inherit",
+                                    opacity: guardando ? 0.6 : 1
+                                }}>
                                     {guardando ? "Guardando..." : "Guardar propiedad"}
                                 </button>
                             </div>
@@ -760,7 +727,6 @@ export default function PropiedadesClient({
                 </div>
             )}
 
-            {/* Toast */}
             {toast && (
                 <div style={{
                     position: "fixed", bottom: 24, left: "50%",
@@ -777,7 +743,6 @@ export default function PropiedadesClient({
     )
 }
 
-// Componente Campo reutilizable
 function Campo({ label, children }: { label: string; children: React.ReactNode }) {
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -795,9 +760,7 @@ function Campo({ label, children }: { label: string; children: React.ReactNode }
                     font-family: inherit; font-size: 12px; outline: none;
                     transition: border-color .12s; width: 100%;
                 }
-                input:focus, select:focus, textarea:focus {
-                    border-color: var(--accent);
-                }
+                input:focus, select:focus, textarea:focus { border-color: var(--accent); }
                 textarea { resize: vertical; min-height: 56px; }
             `}</style>
             {children}
