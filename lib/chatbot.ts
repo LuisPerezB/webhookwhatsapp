@@ -6,6 +6,7 @@ import {
     sendWhatsAppMessage,
     sendWhatsAppImage,
 } from "./whatsapp"
+import { extraerParametros, extraerFechaHora, parametrosFaltantes, preguntarParametro } from "./nlp"
 
 type Respuesta = string | { tipo: "buttons" | "list" | "image"; payload: any }
 
@@ -118,6 +119,181 @@ export async function handleLink({
     return null
 }
 
+async function buscarYMostrar(
+    params: any,
+    session: any,
+    tenant: any,
+    config: any
+): Promise<Respuesta> {
+    const tenantId = tenant.id
+
+    // ── 1. Buscar propiedades con todos los parámetros del NLP ──
+    const { data: propiedades } = await supabase.rpc("buscar_propiedades", {
+        p_tenant_id: tenantId,
+        p_tipo_propiedad: params.tipo_propiedad || null,
+        p_tipo_operacion: params.tipo_operacion || null,
+        p_ciudad_id: null, // se resuelve por nombre abajo
+        p_sector_id: null,
+        p_precio_min: params.precio_min || null,
+        p_precio_max: params.precio_max || null,
+        p_habitaciones: params.habitaciones_min || null,
+        p_banos: params.banos_min || null,
+        p_m2_min: params.m2_min || null,
+        p_m2_max: null,
+        p_patio: null,
+        p_jardin: params.con_jardin || null,
+        p_piscina: params.con_piscina || null,
+        p_estacionamientos: params.con_estacionamiento ? 1 : null,
+        p_ascensor: params.ascensor || null,
+        p_amoblado: params.amoblado || null,
+        p_limite: 20,
+        // Búsqueda por nombre de ciudad y sector
+        p_ciudad: params.ciudad || null,
+        p_sector: params.sector || null,
+    })
+
+    // ── 2. Buscar proyectos coincidentes ──
+    let queryProyectos = supabase
+        .from("proyectos")
+        .select(`
+            id, nombre, precio_desde, precio_hasta, tipo_pago,
+            ciudad:ciudad_id(nombre), sector:sector_id(nombre)
+        `)
+        .eq("tenant_id", tenantId)
+        .eq("estado", "activo")
+        .is("deleted_at", null)
+
+    if (params.ciudad) {
+        const { data: ciudad } = await supabase
+            .from("ciudades")
+            .select("id")
+            .ilike("nombre", `%${params.ciudad}%`)
+            .single()
+        if (ciudad) queryProyectos = queryProyectos.eq("ciudad_id", ciudad.id)
+    }
+    if (params.precio_max) {
+        queryProyectos = queryProyectos.lte("precio_desde", params.precio_max)
+    }
+    if (params.tipo_pago === "biess") {
+        queryProyectos = queryProyectos.contains("tipo_pago", ["biess"])
+    }
+
+    const { data: proyectos } = await queryProyectos.limit(3)
+
+    // ── 3. Fallback — misma ciudad + mismo tipo + misma operación sin filtros extras ──
+    let propsFallback: any[] = []
+    let esFallback = false
+
+    if (!propiedades?.length && !proyectos?.length) {
+        esFallback = true
+        const { data: fallback } = await supabase.rpc("buscar_propiedades", {
+            p_tenant_id: tenantId,
+            p_tipo_propiedad: params.tipo_propiedad || null,
+            p_tipo_operacion: params.tipo_operacion || null,
+            p_ciudad: params.ciudad || null,
+            p_sector: null,
+            p_ciudad_id: null, p_sector_id: null,
+            p_precio_min: null, p_precio_max: null,
+            p_habitaciones: null, p_banos: null,
+            p_m2_min: null, p_m2_max: null,
+            p_patio: null, p_jardin: null, p_piscina: null,
+            p_estacionamientos: null, p_ascensor: null, p_amoblado: null,
+            p_limite: 20,
+        })
+        propsFallback = fallback || []
+    }
+
+    const propsAMostrar = propiedades?.length ? propiedades : propsFallback
+    const totalResultados = propsAMostrar.length + (proyectos?.length || 0)
+
+    // ── 4. Sin resultados en absoluto ──
+    if (totalResultados === 0) {
+        await updateSession(session.id, {
+            ...session.contenido,
+            step: "sin_resultados",
+            params_busqueda: params
+        })
+        return {
+            tipo: "buttons",
+            payload: {
+                body: `No encontre propiedades en ${params.ciudad || "esa zona"} para ${params.tipo_operacion === "alquiler" ? "arrendar" : "comprar"}.`,
+                buttons: [
+                    { id: "buscar_nuevo", title: "Buscar diferente" },
+                    { id: "hablar_agente", title: "Hablar con asesor" },
+                    { id: "btn_menu", title: "Menu principal" },
+                ]
+            }
+        }
+    }
+
+    // ── 5. Guardar en sesión ──
+    await updateSession(session.id, {
+        ...session.contenido,
+        step: "mostrar_resultados",
+        params_busqueda: params,
+        propiedades_ids: propsAMostrar.map((p: any) => p.id),
+        pagina: 0,
+        es_fallback: esFallback
+    })
+
+    // ── 6. Construir encabezado ──
+    const resumen = [
+        params.tipo_propiedad,
+        params.tipo_operacion === "alquiler" ? "en arriendo" : params.tipo_operacion === "venta" ? "en venta" : null,
+        params.ciudad ? `en ${params.ciudad}` : null,
+        params.sector ? `sector ${params.sector}` : null,
+        params.habitaciones_min ? `${params.habitaciones_min}+ hab` : null,
+        params.precio_max ? `hasta $${Number(params.precio_max).toLocaleString("es-EC")}` : null,
+        params.con_estacionamiento ? "con garaje" : null,
+        params.tipo_pago === "biess" ? "BIESS" : null,
+    ].filter(Boolean).join(" · ")
+
+    const encabezado = esFallback
+        ? `No encontre con esas caracteristicas exactas. Te muestro opciones similares en ${params.ciudad}:`
+        : `${totalResultados} resultado(s) — ${resumen}:`
+
+    // ── 7. Rows ──
+    const POR_PAGINA = 5
+    const pagina0 = propsAMostrar.slice(0, POR_PAGINA)
+
+    const rowsProps = pagina0.map((p: any) => rowPropiedad(
+        p.nombre,
+        p.ciudad_nombre || params.ciudad || "",
+        p.sector_nombre || "",
+        `$${Number(p.precio).toLocaleString("es-EC")}${params.tipo_operacion === "alquiler" ? "/mes" : ""}`,
+        `prop_${p.id}`
+    ))
+
+    const rowsProyectos = (proyectos || []).slice(0, 2).map((p: any) => ({
+        id: `proyecto_${p.id}`,
+        title: `🏗 ${p.nombre?.slice(0, 20) || "Proyecto"}`,
+        description: `${(p.ciudad as any)?.nombre || ""} · Desde $${Number(p.precio_desde).toLocaleString("es-EC")}`
+    }))
+
+    const sections: any[] = []
+    if (rowsProps.length > 0) sections.push({ title: "Propiedades", rows: rowsProps })
+    if (rowsProyectos.length > 0) sections.push({ title: "Proyectos", rows: rowsProyectos })
+
+    // Paginación
+    if (propsAMostrar.length > POR_PAGINA) {
+        sections[sections.length - 1].rows.push({
+            id: "pagina_siguiente",
+            title: "Ver mas →",
+            description: `${propsAMostrar.length - POR_PAGINA} resultado(s) mas`
+        })
+    }
+
+    return {
+        tipo: "list",
+        payload: {
+            header: `Resultados (${totalResultados})`,
+            body: encabezado,
+            buttonText: "Ver opciones",
+            sections
+        }
+    }
+}
+
 // =========================
 // HANDLE MESSAGE
 // =========================
@@ -190,7 +366,43 @@ export async function handleMessage({
     }
 
     // INICIO
+    // INICIO
     if (!state.step || state.step === "inicio") {
+        // Si el mensaje tiene contenido — intentar NLP primero
+        if (text.length > 3) {
+            const params = await extraerParametros(text)
+
+            // Si extrajo al menos un parámetro útil → ir directo a búsqueda
+            const tieneParametros = params.tipo_propiedad || params.tipo_operacion ||
+                params.ciudad || params.sector || params.habitaciones_min ||
+                params.precio_max || params.precio_min || params.con_estacionamiento ||
+                params.tipo_pago || params.con_piscina || params.con_jardin ||
+                params.conjunto_cerrado || params.nueva_construccion || params.amoblado
+
+            if (tieneParametros && params.confianza >= 0.3) {
+                const faltantes = parametrosFaltantes(params)
+
+                if (faltantes.length === 0) {
+                    // Tiene todo — buscar directo
+                    await updateSession(session.id, {
+                        step: "busqueda_texto",
+                        params_busqueda: params
+                    })
+                    return await buscarYMostrar(params, session, tenant, config)
+                } else {
+                    // Tiene algo pero le falta — guardar y preguntar
+                    await updateSession(session.id, {
+                        step: "recolectando_params",
+                        params_busqueda: params,
+                        params_pendientes: faltantes,
+                        param_preguntando: faltantes[0]
+                    })
+                    return preguntarParametro(faltantes[0], params)
+                }
+            }
+        }
+
+        // Sin parámetros detectados o mensaje muy corto → menú normal
         await updateSession(session.id, { step: "menu_principal" })
         return await menuPrincipal(tenant, cliente, config)
     }
@@ -203,8 +415,8 @@ export async function handleMessage({
         }
 
         if (btnId === "btn_propiedades" || text === "1" || text.includes("propiedad")) {
-            await updateSession(session.id, { step: "busqueda_texto" })
-            return "Que estas buscando? Puedes describirlo directamente:\n\nEj: casa con 3 habitaciones en el norte de Guayaquil\nEj: departamento para alquilar en Quito\n\nO escribe 'filtros' para buscar paso a paso."
+            await updateSession(session.id, { step: "busqueda_texto", params_busqueda: {} })
+            return "Que estas buscando?\n\nPuedes describirlo directamente:\n\nEj: casa grande en Guayaquil para comprar\nEj: depa en Quito hasta 800 dolares\nEj: terreno en Samborondon con financiamiento BIESS"
         }
 
         if (btnId === "btn_proyectos" || text === "2" || text.includes("proyecto")) {
@@ -221,42 +433,105 @@ export async function handleMessage({
         return await menuPrincipal(tenant, cliente, config)
     }
 
-    // BUSQUEDA POR TEXTO
+    // BUSQUEDA POR TEXTO — entrada libre con NLP
     if (state.step === "busqueda_texto") {
-        if (text === "filtros") {
-            await updateSession(session.id, { ...state, step: "filtro_tipo" })
-            return await listaTipoPropiedad()
-        }
+        // Extraer parámetros con Gemini
+        const params = await extraerParametros(text)
 
-        if (text === "todas" || text === "ver todas") {
-            const resultados = await buscarPropiedades({ tenantId: tenant.id })
-            return await formatearResultados(resultados, session.id, state)
-        }
-
-        const params = interpretarTexto(text)
-        const tieneParametros = Object.keys(params).length > 0
-
-        if (tieneParametros) {
-            const resultados = await buscarPropiedades({ tenantId: tenant.id, ...params })
-            if (resultados.length > 0) {
-                return await formatearResultados(resultados, session.id, { ...state, ...params })
+        // Acumular con lo que ya teníamos
+        const acumulado = { ...state.params_busqueda }
+        Object.entries(params).forEach(([k, v]) => {
+            if (v !== undefined && k !== "confianza") {
+                (acumulado as any)[k] = v
             }
-            await updateSession(session.id, { ...state, step: "sin_resultados", ...params })
-            return {
-                tipo: "buttons",
-                payload: {
-                    body: `No encontre ${params.tipo_propiedad || "propiedades"} con esos criterios.\n\nQue deseas hacer?`,
-                    buttons: [
-                        { id: "buscar_otro_sector", title: "Cambiar busqueda" },
-                        { id: "ver_proyectos", title: "Ver proyectos" },
-                        { id: "btn_filtros", title: "Usar filtros" },
-                    ]
+        })
+
+        const faltantes = parametrosFaltantes(acumulado)
+
+        if (faltantes.length > 0) {
+            await updateSession(session.id, {
+                ...state,
+                step: "recolectando_params",
+                params_busqueda: acumulado,
+                params_pendientes: faltantes,
+                param_preguntando: faltantes[0]
+            })
+            return preguntarParametro(faltantes[0], acumulado)
+        }
+
+        return await buscarYMostrar(acumulado, session, tenant, config)
+    }
+
+    // RECOLECTANDO PARÁMETROS — respuestas a preguntas
+    if (state.step === "recolectando_params") {
+        const paramActual = state.param_preguntando
+        const acumulado = { ...state.params_busqueda }
+
+        if (btnId === "op_comprar") {
+            acumulado.tipo_operacion = "venta"
+        } else if (btnId === "op_arrendar") {
+            acumulado.tipo_operacion = "alquiler"
+        } else if (btnId.startsWith("tipo_")) {
+            acumulado.tipo_propiedad = btnId.replace("tipo_", "")
+        } else {
+            // Texto libre — extraer con NLP
+            const params = await extraerParametros(text)
+
+            if (paramActual === "ciudad" && params.ciudad) {
+                acumulado.ciudad = params.ciudad
+            } else if (paramActual === "ciudad") {
+                // Intentar fuzzy match directo
+                const resultado = await buscarCiudadFuzzy(text, tenant.id)
+                if (resultado) {
+                    acumulado.ciudad = resultado.nombre
+                } else {
+                    return "No reconoci esa ciudad. Escribe el nombre completo (ej: Guayaquil, Quito, Cuenca):"
+                }
+            } else if (paramActual === "tipo_propiedad" && params.tipo_propiedad) {
+                acumulado.tipo_propiedad = params.tipo_propiedad
+            } else if (paramActual === "tipo_propiedad") {
+                // Mostrar botones de tipo
+                return await listaTipoPropiedad()
+            } else if (paramActual === "tipo_operacion" && params.tipo_operacion) {
+                acumulado.tipo_operacion = params.tipo_operacion
+            } else if (paramActual === "tipo_operacion") {
+                // No entendió — botones
+                await updateSession(session.id, { ...state, params_busqueda: acumulado })
+                return {
+                    tipo: "buttons",
+                    payload: {
+                        body: "Buscas comprar o arrendar?",
+                        buttons: [
+                            { id: "op_comprar", title: "Comprar" },
+                            { id: "op_arrendar", title: "Arrendar" },
+                        ]
+                    }
                 }
             }
+
+            // Aprovechar otros parámetros extraídos aunque no sean el faltante
+            Object.entries(params).forEach(([k, v]) => {
+                if (v !== undefined && k !== "confianza" && !(k in acumulado)) {
+                    (acumulado as any)[k] = v
+                }
+            })
         }
 
-        await updateSession(session.id, { ...state, step: "filtro_tipo" })
-        return await listaTipoPropiedad()
+        // Recalcular faltantes después de actualizar
+        const pendientes = parametrosFaltantes(acumulado)
+        const siguienteFaltante = pendientes[0]
+
+        if (siguienteFaltante) {
+            await updateSession(session.id, {
+                ...state,
+                params_busqueda: acumulado,
+                params_pendientes: pendientes,
+                param_preguntando: siguienteFaltante
+            })
+            return preguntarParametro(siguienteFaltante, acumulado)
+        }
+
+        return await buscarYMostrar(acumulado, session, tenant, config)
     }
 
     // FILTRO TIPO
@@ -512,7 +787,77 @@ export async function handleMessage({
 
         return await listarUnidadesProyecto(state.proyecto_id)
     }
+    // SOLICITAR FECHA VISITA LIBRE — cuando no hay horarios disponibles
+    if (state.step === "solicitar_fecha_visita") {
+        const intentos = (state.intentos_fecha || 0) + 1
+        const maxIntentos = 3
 
+        // Extraer fecha y hora con NLP
+        const fechaRef = new Date().toISOString().split("T")[0]
+        const { fecha, hora, confianza } = await extraerFechaHora(text, fechaRef)
+
+        // No entendió la fecha
+        if (!fecha && !hora) {
+            if (intentos >= maxIntentos) {
+                await activarModoManual(session, tenant, cliente)
+                return "No pude entender la fecha. Un agente te contactara para coordinar la visita. ⏳"
+            }
+
+            await updateSession(session.id, { ...state, intentos_fecha: intentos })
+            return `No entendi la fecha. Intentalo de nuevo (${intentos}/${maxIntentos}):\n\nEj: manana a las 3pm\nEj: el viernes a las 10am\nEj: 25 de abril en la tarde`
+        }
+
+        // Validar que la fecha no sea pasada
+        if (fecha) {
+            const fechaVisita = new Date(fecha)
+            const hoy = new Date()
+            hoy.setHours(0, 0, 0, 0)
+
+            if (fechaVisita < hoy) {
+                await updateSession(session.id, { ...state, intentos_fecha: intentos })
+                return "Esa fecha ya paso. Indica una fecha futura:"
+            }
+        }
+
+        // Construir la reserva en estado pendiente_confirmacion
+        const fechaFinal = fecha || new Date(Date.now() + 86400000).toISOString().split("T")[0]
+        const horaFinal = hora || "10:00"
+        const fechaISO = `${fechaFinal}T${horaFinal}:00`
+
+        const reservaData: any = {
+            tenant_id: tenant.id,
+            cliente_id: cliente.id,
+            fecha: fechaISO,
+            estado: "pendiente",
+            notas: `Solicitud libre del cliente: "${text}". Pendiente confirmacion del agente.`
+        }
+
+        if (state.propiedad_id) reservaData.propiedad_id = state.propiedad_id
+        if (state.proyecto_id) reservaData.proyecto_id = state.proyecto_id
+
+        await supabase.from("reservas").insert(reservaData)
+
+        // Notificar al agente
+        const fechaFormato = new Date(fechaISO).toLocaleDateString("es-EC", {
+            weekday: "long", day: "numeric", month: "long",
+            hour: "2-digit", minute: "2-digit"
+        })
+
+        await supabase.from("notificaciones").insert({
+            tenant_id: tenant.id,
+            cliente_id: cliente.id,
+            sesion_id: session.id,
+            tipo: "cita_nueva",
+            mensaje: `${cliente.celular} solicito visita para ${fechaFormato} — pendiente confirmacion`
+        })
+
+        await updateSession(session.id, { step: "menu_principal" })
+
+        const nombre = cliente.nombres_completos !== "Cliente WhatsApp"
+            ? cliente.nombres_completos : "estimad@ cliente"
+
+        return `Solicitud recibida. ✅\n\nFecha solicitada: ${fechaFormato}\n\nUn agente confirmara tu cita en breve, ${nombre}.\n\nEscribe 'citas' para ver el estado de tu reserva.`
+    }
     // AGENDAMIENTO
     if (state.step === "agendar_propiedad" || state.step === "agendar_proyecto") {
         let horarioId: number | null = null
@@ -1249,21 +1594,18 @@ async function mostrarHorariosPropiedad(
         .limit(6)
 
     if (!data?.length) {
-        return {
-            tipo: "buttons",
-            payload: {
-                body: "No hay horarios disponibles en este momento.",
-                buttons: [
-                    { id: "hablar_agente", title: "Coordinar con agente" },
-                    { id: "btn_volver", title: "Volver" },
-                ]
-            }
-        }
+        // Sin horarios — activar flujo de solicitud libre
+        await updateSession(sessionId, {
+            ...state,
+            step: "solicitar_fecha_visita",
+            propiedad_id: propiedadId,
+            intentos_fecha: 0
+        })
+
+        return "No hay horarios disponibles en este momento.\n\nIndica el dia y hora que prefieres para tu visita y un agente confirmara:\n\nEj: manana a las 3pm\nEj: el viernes en la tarde\nEj: 25 de abril a las 10am"
     }
 
     const ids = data.map(h => h.id)
-
-    // ← AQUÍ: step cambia a agendar_propiedad + guarda horarios_ids
     await updateSession(sessionId, {
         ...state,
         step: "agendar_propiedad",
@@ -1312,21 +1654,18 @@ async function mostrarHorariosProyecto(
         .limit(6)
 
     if (!data?.length) {
-        return {
-            tipo: "buttons",
-            payload: {
-                body: "No hay horarios disponibles para este proyecto.",
-                buttons: [
-                    { id: "hablar_agente", title: "Coordinar con agente" },
-                    { id: "btn_volver", title: "Volver" },
-                ]
-            }
-        }
+        // Sin horarios — activar flujo de solicitud libre
+        await updateSession(sessionId, {
+            ...state,
+            step: "solicitar_fecha_visita",
+            proyecto_id: proyectoId,
+            intentos_fecha: 0
+        })
+
+        return "No hay horarios disponibles para este proyecto.\n\nIndica el dia y hora que prefieres para tu visita y un agente confirmara:\n\nEj: manana a las 3pm\nEj: el sabado en la manana\nEj: 25 de abril a las 10am"
     }
 
     const ids = data.map(h => h.id)
-
-    // ← AQUÍ: step cambia a agendar_proyecto + guarda horarios_ids
     await updateSession(sessionId, {
         ...state,
         step: "agendar_proyecto",
