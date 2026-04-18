@@ -128,7 +128,7 @@ export default function PropiedadesClient({
                 seguridad: form.seguridad,
                 fotos: fotosUrls, // ← URLs finales ya subidas
             }
-
+            console.log("Payload a enviar:", body);
             const url = modal === "editar"
                 ? `/api/admin/propiedades/${propActual.id}`
                 : "/api/admin/propiedades"
