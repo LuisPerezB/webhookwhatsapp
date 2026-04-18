@@ -33,6 +33,30 @@ Inferencias clave:
 
 Omite campos no mencionados. Devuelve solo JSON.`
 
+const SYSTEM_PROMPT_FECHA = `Extrae fecha y hora de un mensaje en español. Solo JSON, sin texto.
+
+Formato de respuesta:
+{
+  "fecha": "YYYY-MM-DD o null",
+  "hora": "HH:MM o null",
+  "confianza": 0.0-1.0
+}
+
+Reglas:
+- Resuelve fechas relativas según la fecha de hoy que se indica
+- "mañana" → día siguiente
+- "pasado mañana" → dos días después
+- "el lunes/martes/etc" → próximo día de esa semana
+- "en la mañana" → "09:00"
+- "en la tarde" → "15:00"
+- "en la noche" → "18:00"
+- "a las 3" sin contexto → "15:00"
+- "a las 3 de la mañana" → "03:00"
+- Si no menciona hora → null
+- Si no menciona fecha → null
+
+Omite campos nulos. Devuelve solo JSON.`
+
 export interface ParametrosExtraidos {
     tipo_propiedad?: "casa" | "departamento" | "terreno" | "comercial" | "oficina"
     tipo_operacion?: "venta" | "alquiler"
@@ -56,55 +80,106 @@ export interface ParametrosExtraidos {
     confianza: number
 }
 
-export async function extraerParametros(
-    texto: string
-): Promise<ParametrosExtraidos> {
+export interface FechaHoraExtraida {
+    fecha?: string
+    hora?: string
+    confianza: number
+}
+
+async function llamarHaiku(
+    systemPrompt: string,
+    userMessage: string
+): Promise<string | null> {
     try {
-        const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-            {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    contents: [{
-                        role: "user",
-                        parts: [{ text: `${SYSTEM_PROMPT}\n\nMensaje: ${texto}` }]
-                    }],
-                    generationConfig: {
-                        temperature: 0,
-                        maxOutputTokens: 200,
-                        responseMimeType: "application/json"
-                    }
-                })
-            }
-        )
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+                "x-api-key": process.env.ANTHROPIC_API_KEY!,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                model: "claude-haiku-4-5-20251001",
+                max_tokens: 300,
+                system: systemPrompt,
+                messages: [{ role: "user", content: userMessage }]
+            })
+        })
 
         if (!res.ok) {
-            console.error("[NLP] Gemini error:", res.status, await res.text())
-            return { confianza: 0 }
+            const err = await res.json()
+            console.error("[NLP] Haiku error:", res.status, JSON.stringify(err))
+            return null
         }
 
         const data = await res.json()
-        const content = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
-
-        if (!content) return { confianza: 0 }
-
-        const parsed = JSON.parse(content)
-
-        const limpio: ParametrosExtraidos = { confianza: parsed.confianza ?? 0.5 }
-        Object.entries(parsed).forEach(([k, v]) => {
-            if (v !== null && v !== "null" && v !== undefined && k !== "confianza") {
-                (limpio as any)[k] = v
-            }
-        })
-
-        console.log("[NLP]", JSON.stringify(limpio))
-        return limpio
+        return data.content?.[0]?.text?.trim() || null
 
     } catch (err) {
-        console.error("[NLP] Error:", err)
-        return { confianza: 0 }
+        console.error("[NLP] Error llamando Haiku:", err)
+        return null
     }
+}
+
+function parsearJSON(content: string): any | null {
+    try {
+        // Limpiar posibles backticks o texto extra
+        const limpio = content
+            .replace(/```json/gi, "")
+            .replace(/```/g, "")
+            .trim()
+        return JSON.parse(limpio)
+    } catch {
+        // Intentar extraer JSON del texto
+        const match = content.match(/\{[\s\S]*\}/)
+        if (match) {
+            try { return JSON.parse(match[0]) } catch { return null }
+        }
+        return null
+    }
+}
+
+export async function extraerParametros(
+    texto: string
+): Promise<ParametrosExtraidos> {
+    const content = await llamarHaiku(SYSTEM_PROMPT, texto)
+
+    if (!content) return fallbackNLP(texto)
+
+    const parsed = parsearJSON(content)
+    if (!parsed) return fallbackNLP(texto)
+
+    const limpio: ParametrosExtraidos = { confianza: parsed.confianza ?? 0.5 }
+    Object.entries(parsed).forEach(([k, v]) => {
+        if (v !== null && v !== "null" && v !== undefined && k !== "confianza") {
+            (limpio as any)[k] = v
+        }
+    })
+
+    console.log("[NLP] Parámetros:", JSON.stringify(limpio))
+    return limpio
+}
+
+export async function extraerFechaHora(
+    texto: string,
+    fechaReferencia: string
+): Promise<FechaHoraExtraida> {
+    const content = await llamarHaiku(
+        SYSTEM_PROMPT_FECHA,
+        `Hoy es ${fechaReferencia}. Mensaje: ${texto}`
+    )
+
+    if (!content) return { confianza: 0 }
+
+    const parsed = parsearJSON(content)
+    if (!parsed) return { confianza: 0 }
+
+    const limpio: FechaHoraExtraida = { confianza: parsed.confianza ?? 0.5 }
+    if (parsed.fecha && parsed.fecha !== "null") limpio.fecha = parsed.fecha
+    if (parsed.hora && parsed.hora !== "null") limpio.hora = parsed.hora
+
+    console.log("[NLP FechaHora]", JSON.stringify(limpio))
+    return limpio
 }
 
 export function parametrosFaltantes(params: ParametrosExtraidos): string[] {
@@ -190,74 +265,51 @@ export function parametrosAFiltrosBD(params: ParametrosExtraidos): Record<string
     return f
 }
 
+// Fallback regex cuando Haiku falla
+function fallbackNLP(texto: string): ParametrosExtraidos {
+    console.log("[NLP] Usando fallback regex")
+    const t = texto.toLowerCase()
+    const resultado: ParametrosExtraidos = { confianza: 0.3 }
 
-export interface FechaHoraExtraida {
-    fecha?: string      // formato YYYY-MM-DD
-    hora?: string       // formato HH:MM
-    confianza: number
-}
+    if (/\bcasa\b|\bvilla\b/.test(t)) resultado.tipo_propiedad = "casa"
+    else if (/\bdepa\b|\bdepartamento\b|\bapto\b/.test(t)) resultado.tipo_propiedad = "departamento"
+    else if (/\bterreno\b|\blote\b|\bsolar\b/.test(t)) resultado.tipo_propiedad = "terreno"
+    else if (/\blocal\b|\bcomercial\b/.test(t)) resultado.tipo_propiedad = "comercial"
+    else if (/\boficina\b/.test(t)) resultado.tipo_propiedad = "oficina"
 
-export async function extraerFechaHora(
-    texto: string,
-    fechaReferencia: string  // fecha actual en YYYY-MM-DD para resolver "mañana", "el viernes"
-): Promise<FechaHoraExtraida> {
-    try {
-        const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-            {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    contents: [{
-                        role: "user",
-                        parts: [{ text: `Hoy es ${fechaReferencia}. Extrae fecha y hora del mensaje. Solo JSON, sin texto.
+    if (/\bcomprar\b|\bcompra\b|\bventa\b/.test(t)) resultado.tipo_operacion = "venta"
+    else if (/\barriend\b|\balquil\b|\brenta\b/.test(t)) resultado.tipo_operacion = "alquiler"
 
-Reglas:
-- "mañana" → día siguiente a la fecha de hoy
-- "pasado mañana" → dos días después
-- "el lunes/martes/etc" → próximo día de esa semana
-- "en la mañana" → hora: "09:00"
-- "en la tarde" → hora: "15:00"
-- "en la noche" → hora: "18:00"
-- "a las X" → hora en formato HH:MM (24h)
-- "a las 3" → "15:00" si dice tarde, "09:00" si dice mañana, sino "15:00" por defecto
-- Si no menciona hora → null
-- Si no menciona fecha → null
-
-Formato:
-{
-  "fecha": "YYYY-MM-DD o null",
-  "hora": "HH:MM o null",
-  "confianza": 0.0-1.0
-}
-
-Mensaje: ${texto}` }]
-                    }],
-                    generationConfig: {
-                        temperature: 0,
-                        maxOutputTokens: 100,
-                        responseMimeType: "application/json"
-                    }
-                })
-            }
-        )
-
-        if (!res.ok) return { confianza: 0 }
-
-        const data = await res.json()
-        const content = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
-        if (!content) return { confianza: 0 }
-
-        const parsed = JSON.parse(content)
-        const limpio: FechaHoraExtraida = { confianza: parsed.confianza ?? 0.5 }
-        if (parsed.fecha && parsed.fecha !== "null") limpio.fecha = parsed.fecha
-        if (parsed.hora && parsed.hora !== "null") limpio.hora = parsed.hora
-
-        console.log("[NLP FechaHora]", JSON.stringify(limpio))
-        return limpio
-
-    } catch (err) {
-        console.error("[NLP FechaHora] Error:", err)
-        return { confianza: 0 }
+    const ciudades = [
+        "guayaquil", "quito", "cuenca", "samborondón", "samborondon",
+        "daule", "manta", "ambato", "loja", "ibarra", "esmeraldas",
+        "portoviejo", "riobamba", "machala", "durán", "duran"
+    ]
+    for (const ciudad of ciudades) {
+        if (t.includes(ciudad)) {
+            resultado.ciudad = ciudad.charAt(0).toUpperCase() + ciudad.slice(1)
+            break
+        }
     }
+
+    const habMatch = t.match(/(\d+)\s*(?:habitaci|cuarto|dormitorio|hab\b)/)
+    if (habMatch) resultado.habitaciones_min = parseInt(habMatch[1])
+    else if (/\bgrande\b|\bampli/.test(t)) resultado.habitaciones_min = 3
+    else if (/\bmedian/.test(t)) resultado.habitaciones_min = 2
+    else if (/\bpeque|studio|estudio/.test(t)) resultado.habitaciones_min = 1
+
+    const precioMax = t.match(/hasta\s*\$?\s*(\d[\d.,]*)\s*(?:mil|k)?/i)
+    if (precioMax) {
+        const val = parseFloat(precioMax[1].replace(",", ""))
+        resultado.precio_max = /mil|k/i.test(t) ? val * 1000 : val
+    }
+
+    if (/garaje|parqueadero|estacionamiento/.test(t)) resultado.con_estacionamiento = true
+    if (/biess|iess/.test(t)) resultado.tipo_pago = "biess"
+    if (/piscina/.test(t)) resultado.con_piscina = true
+    if (/conjunto|urbanizaci/.test(t)) resultado.conjunto_cerrado = true
+    if (/estreno|nueva|nuevo/.test(t)) resultado.nueva_construccion = true
+    if (/amoblado|amueblado/.test(t)) resultado.amoblado = true
+
+    return resultado
 }
