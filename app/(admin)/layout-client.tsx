@@ -49,7 +49,7 @@ export default function AdminLayoutClient({
             const data = await res.json()
             setNotificaciones(data.notificaciones || [])
             setTotalNoLeidas(data.total_no_leidas || 0)
-        } catch {}
+        } catch { }
     }, [])
 
     // Cargar conversaciones para el panel flotante
@@ -59,7 +59,7 @@ export default function AdminLayoutClient({
             if (!res.ok) return
             const data = await res.json()
             setConversaciones(data.conversaciones || [])
-        } catch {}
+        } catch { }
     }, [])
 
     useEffect(() => {
@@ -100,6 +100,7 @@ export default function AdminLayoutClient({
             label: "Catálogo",
             items: [
                 { id: "propiedades", href: "/dashboard/propiedades", label: "Propiedades", icon: IconHome },
+                { id: "proyectos", href: "/dashboard/proyectos", label: "Proyectos", icon: IconBuilding },  // ← ¿está?
                 { id: "horarios", href: "/dashboard/horarios", label: "Horarios", icon: IconClock },
             ]
         },
@@ -662,7 +663,17 @@ function IconHome({ active }: { active: boolean }) {
         </svg>
     )
 }
-
+function IconBuilding({ active }: { active: boolean }) {
+    return (
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"
+            stroke="currentColor" strokeWidth="1.5" style={{ opacity: active ? 1 : .7 }}>
+            <rect x="1" y="3" width="14" height="12" rx="1" />
+            <path d="M5 15V9h6v6" />
+            <path d="M4 3V1h8v2" />
+            <path d="M5 6h1M10 6h1M5 9h1M10 9h1" />
+        </svg>
+    )
+}
 function IconChat({ active }: { active: boolean }) {
     return (
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none"
