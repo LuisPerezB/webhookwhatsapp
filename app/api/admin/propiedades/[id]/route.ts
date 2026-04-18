@@ -31,24 +31,75 @@ export async function GET(
 
 export async function PATCH(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
 
+    const { id } = await params
     const body = await request.json()
-    delete body.tenant_id // No permitir cambiar tenant
+    delete body.tenant_id
+
+    // Extraer id si viene como objeto {id, nombre}
+    const extraerId = (v: any): number | null => {
+        if (!v && v !== 0) return null
+        if (typeof v === "object" && v?.id) return parseInt(v.id)
+        const n = parseInt(v)
+        return isNaN(n) ? null : n
+    }
+
+    const extraerFloat = (v: any): number | null => {
+        if (!v && v !== 0) return null
+        const n = parseFloat(v)
+        return isNaN(n) ? null : n
+    }
+
+    const ciudad_id = extraerId(body.ciudad_id)
+    const precio = extraerFloat(body.precio)
+
+    if (!ciudad_id) {
+        return NextResponse.json({ error: "La ciudad es requerida" }, { status: 400 })
+    }
+
+    if (!precio) {
+        return NextResponse.json({ error: "El precio es requerido" }, { status: 400 })
+    }
+
+    // Limpiar todos los campos antes de enviar a Supabase
+    const datosLimpios: any = {
+        ...body,
+        ciudad_id,
+        precio,
+        sector_id: extraerId(body.sector_id),
+        proyecto_id: extraerId(body.proyecto_id),
+    }
+
+    // Quitar campos que son objetos join — Supabase no los acepta
+    delete datosLimpios.ciudad
+    delete datosLimpios.sector
+    delete datosLimpios.proyecto
+
+    console.log("[PATCH] datosLimpios:", JSON.stringify({
+        ciudad_id: datosLimpios.ciudad_id,
+        sector_id: datosLimpios.sector_id,
+        proyecto_id: datosLimpios.proyecto_id,
+        precio: datosLimpios.precio,
+    }))
 
     const { data, error } = await supabase
         .from("propiedades")
-        .update(body)
-        .eq("id", parseInt(params.id))
+        .update(datosLimpios)
+        .eq("id", parseInt(id))
         .eq("tenant_id", session.tenantId)
         .is("deleted_at", null)
         .select()
         .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    if (error) {
+        console.error("[PATCH] Supabase error:", error.message)
+        return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
     return NextResponse.json({ propiedad: data })
 }
 
