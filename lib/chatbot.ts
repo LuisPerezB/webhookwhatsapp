@@ -226,12 +226,12 @@ async function buscarYMostrar(
         }
     }
 
-    // ── 5. Guardar en sesión ──
+    // En buscarYMostrar — paso 5, cambiar resultado_ids por propiedades_ids
     await updateSession(session.id, {
         ...session.contenido,
         step: "mostrar_resultados",
         params_busqueda: params,
-        propiedades_ids: propsAMostrar.map((p: any) => p.id),
+        propiedades_ids: propsAMostrar.map((p: any) => p.id), // ← antes era resultado_ids
         pagina: 0,
         es_fallback: esFallback
     })
@@ -495,16 +495,29 @@ export async function handleMessage({
             } else if (paramActual === "tipo_operacion" && params.tipo_operacion) {
                 acumulado.tipo_operacion = params.tipo_operacion
             } else if (paramActual === "tipo_operacion") {
-                // No entendió — botones
-                await updateSession(session.id, { ...state, params_busqueda: acumulado })
-                return {
-                    tipo: "buttons",
-                    payload: {
-                        body: "Buscas comprar o arrendar?",
-                        buttons: [
-                            { id: "op_comprar", title: "Comprar" },
-                            { id: "op_arrendar", title: "Arrendar" },
-                        ]
+                // Primero intentar NLP
+                const params = await extraerParametros(text)
+                if (params.tipo_operacion) {
+                    acumulado.tipo_operacion = params.tipo_operacion
+                } else {
+                    // Fallback regex ampliado
+                    const t = text.toLowerCase()
+                    if (/comprar|compra|comprarla|comprarlo|adquirir|venta|quiero comprar/.test(t)) {
+                        acumulado.tipo_operacion = "venta"
+                    } else if (/arrendar|arriendo|alquil|rentar|renta|arrendarlo|arrendarla/.test(t)) {
+                        acumulado.tipo_operacion = "alquiler"
+                    } else {
+                        await updateSession(session.id, { ...state, params_busqueda: acumulado })
+                        return {
+                            tipo: "buttons",
+                            payload: {
+                                body: "Buscas comprar o arrendar?",
+                                buttons: [
+                                    { id: "op_comprar", title: "Comprar" },
+                                    { id: "op_arrendar", title: "Arrendar" },
+                                ]
+                            }
+                        }
                     }
                 }
             }
@@ -661,24 +674,34 @@ export async function handleMessage({
         })
     }
 
-    // PAGINACION
-    if (state.step === "mostrar_resultados" &&
-        (btnId === "pagina_siguiente" || btnId === "pagina_anterior")) {
-        const pagina = state.pagina || 0
-        const nuevaPagina = btnId === "pagina_siguiente" ? pagina + 1 : Math.max(0, pagina - 1)
-
-        const params = {
-            tenantId: tenant.id,
-            tipo_operacion: state.operacion || undefined,
-            tipo_propiedad: state.tipo || undefined,
-            ciudad_id: state.ciudad_id || undefined,
-            sector_id: state.sector_id || undefined,
+    if (state.step === "mostrar_resultados") {
+        // Manejar selección de proyecto desde la lista
+        if (btnId.startsWith("proyecto_")) {
+            const proyId = parseInt(btnId.replace("proyecto_", ""))
+            return await mostrarDetalleProyecto(
+                proyId, session, state, tenant, phoneNumberId, from
+            )
         }
 
-        const resultados = await buscarPropiedades(params)
-        return await formatearResultados(resultados, session.id, { ...state, pagina: nuevaPagina })
-    }
+        let propiedadId: number | null = null
 
+        if (btnId.startsWith("prop_")) {
+            propiedadId = parseInt(btnId.replace("prop_", ""))
+        } else {
+            const num = parseInt(text)
+            if (!isNaN(num) && state.propiedades_ids?.[num - 1]) {
+                propiedadId = state.propiedades_ids[num - 1]
+            }
+        }
+
+        if (propiedadId) {
+            return await mostrarDetallePropiedad(
+                propiedadId, session, state, tenant, phoneNumberId, from
+            )
+        }
+
+        return "Selecciona una propiedad de la lista."
+    }
     // MOSTRAR RESULTADOS
     if (state.step === "mostrar_resultados") {
         if (btnId === "btn_volver" || text === "0") {
@@ -1103,7 +1126,10 @@ async function mostrarDetallePropiedad(
 
     const ciudadNombre = (prop.ciudad as any)?.nombre || ""
     const sectorNombre = (prop.sector as any)?.nombre || ""
-
+    const ubicacion = [
+        sectorNombre,
+        ciudadNombre,
+    ].filter(Boolean).join(", ")
     return {
         tipo: "buttons",
         payload: {
@@ -1114,7 +1140,7 @@ async function mostrarDetallePropiedad(
                 { id: `ver_web_prop_${propiedadId}`, title: "Ver en web" },
                 { id: "btn_volver", title: "Volver" },
             ],
-            footer: [ciudadNombre, sectorNombre].filter(Boolean).join(", ")
+            footer: ubicacion || ciudadNombre  // ← sector + ciudad
         }
     }
 }
@@ -1772,44 +1798,76 @@ function formatearDetallePropiedad(p: any): string {
     const ext = p.exteriores || {}
     const est = p.estacionamiento || {}
     const extra = p.extras || {}
+    const seg = p.seguridad || {}
     const pago = Array.isArray(p.tipo_pago) ? p.tipo_pago.join(", ") : ""
 
     const lineas: string[] = []
 
-    if (p.precio) lineas.push(`Precio: $${Number(p.precio).toLocaleString("es-EC")}${p.precio_negociable ? " (negociable)" : ""}`)
-    if (dim.m2_construccion) lineas.push(`Construccion: ${dim.m2_construccion}m2`)
-    if (dim.m2_terreno) lineas.push(`Terreno: ${dim.m2_terreno}m2`)
-    if (dim.m2_total) lineas.push(`Total: ${dim.m2_total}m2`)
+    // Precio primero
+    if (p.precio) {
+        const precioFmt = `$${Number(p.precio).toLocaleString("es-EC")}`
+        const sufijo = p.tipo_operacion === "alquiler" ? "/mes" : ""
+        const neg = p.precio_negociable ? " (negociable)" : ""
+        lineas.push(`Precio: ${precioFmt}${sufijo}${neg}`)
+    }
+
+    // Dimensiones
+    if (dim.m2_construccion) lineas.push(`Construccion: ${dim.m2_construccion}m²`)
+    if (dim.m2_terreno) lineas.push(`Terreno: ${dim.m2_terreno}m²`)
+    if (dim.m2_total && !dim.m2_construccion) lineas.push(`Total: ${dim.m2_total}m²`)
+    if (dim.pisos && dim.pisos > 1) lineas.push(`Pisos: ${dim.pisos}`)
+
+    // Ambientes
     if (amb.habitaciones) lineas.push(`Habitaciones: ${amb.habitaciones}`)
-    if (amb.banos) lineas.push(`Banos: ${amb.banos}`)
-    if (amb.medios_banos) lineas.push(`Medios banos: ${amb.medios_banos}`)
-    if (est.estacionamientos) lineas.push(`Estacionamientos: ${est.estacionamientos}`)
-    if (est.cubierto) lineas.push(`Estacionamiento cubierto`)
+    if (amb.banos) lineas.push(`Baños: ${amb.banos}`)
+    if (amb.medios_banos) lineas.push(`Medios baños: ${amb.medios_banos}`)
+
+    // Estacionamiento
+    if (est.estacionamientos) {
+        const cub = est.cubierto ? " cubierto" : ""
+        lineas.push(`Garaje: ${est.estacionamientos}${cub}`)
+    }
     if (est.bodega) lineas.push(`Bodega incluida`)
 
-    const exterioresActivos = [
+    // Exteriores relevantes
+    const extItems = [
         ext.patio && "Patio",
-        ext.jardin && "Jardin",
+        ext.jardin && "Jardín",
         ext.terraza && "Terraza",
-        ext.balcon && "Balcon",
+        ext.balcon && "Balcón",
         ext.piscina && "Piscina",
         ext.bbq && "BBQ",
     ].filter(Boolean)
-    if (exterioresActivos.length) lineas.push(`Exteriores: ${exterioresActivos.join(", ")}`)
+    if (extItems.length) lineas.push(`Exteriores: ${extItems.join(", ")}`)
 
-    const extrasActivos = [
+    // Seguridad
+    const segItems = [
+        seg.conjunto_cerrado && "Conjunto cerrado",
+        seg.guardianía && "Guardianía",
+        seg.camara_seguridad && "Cámaras",
+        seg.alarma && "Alarma",
+    ].filter(Boolean)
+    if (segItems.length) lineas.push(`Seguridad: ${segItems.join(", ")}`)
+
+    // Extras
+    const extraItems = [
         extra.amoblado && "Amoblado",
         extra.ascensor && "Ascensor",
         extra.generador && "Generador",
         extra.cisterna && "Cisterna",
         extra.panel_solar && "Panel solar",
     ].filter(Boolean)
-    if (extrasActivos.length) lineas.push(`Adicionales: ${extrasActivos.join(", ")}`)
+    if (extraItems.length) lineas.push(`Extras: ${extraItems.join(", ")}`)
 
+    // Pago
     if (pago) lineas.push(`Forma de pago: ${pago}`)
-    if (p.descripcion) lineas.push(`\n${p.descripcion}`)
 
-    return lineas.map((l, i) => l.startsWith("\n") ? l : `${i + 1}. ${l}`).join("\n")
+    // Descripción al final
+    if (p.descripcion) lineas.push(`\n${p.descripcion.slice(0, 200)}`)
+
+    return lineas.map((l, i) =>
+        l.startsWith("\n") ? l : `${i + 1}. ${l}`
+    ).join("\n")
 }
 
 function formatearDetalleProyecto(p: any): string {
