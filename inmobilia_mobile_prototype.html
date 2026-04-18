@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>INMOBIL.IA — Prototipo Móvil</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f2ee;
+    --surface: #fff;
+    --surface2: #f0ede8;
+    --surface3: #e8e4dd;
+    --border: rgba(0,0,0,0.07);
+    --border2: rgba(0,0,0,0.13);
+    --text: #1a1917;
+    --text2: #6b6861;
+    --text3: #a09c97;
+    --accent: #2a4a3e;
+    --accent2: #3d6b5c;
+    --accent-light: #e6f0eb;
+    --accent-text: #1a3329;
+    --sg: #1a5c3a; --sgb: #e4f5ec;
+    --sa: #7a4a0a; --sab: #fef3e2;
+    --sr: #991f1f; --srb: #fdeaea;
+    --sb: #1a4a7a; --sbb: #e6f0fb;
+    --sp: #3a2a7a; --spb: #eeebfb;
+    --sgr: #4a4742; --sgrb: #f0ede8;
+    --nav-h: 64px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: #ddd8d0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+    gap: 40px;
+  }
+
+  /* ======== ENCABEZADO PÁGINA ======== */
+  .page-header {
+    text-align: center;
+    color: #3a3630;
+  }
+  .page-header h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 28px;
+    font-weight: 400;
+    margin-bottom: 6px;
+  }
+  .page-header p { font-size: 14px; color: #6b6860; }
+
+  /* ======== GRID DE PANTALLAS ======== */
+  .screens-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 375px);
+    gap: 32px;
+    justify-content: center;
+    width: 100%;
+    max-width: 1280px;
+  }
+
+  /* ======== DEVICE FRAME ======== */
+  .device {
+    width: 375px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .device-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #6b6860;
+    margin-bottom: 10px;
+  }
+  .phone-frame {
+    width: 375px;
+    height: 720px;
+    background: var(--bg);
+    border-radius: 40px;
+    border: 8px solid #2a2520;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,.25), inset 0 0 0 2px rgba(255,255,255,.12);
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ======== STATUS BAR ======== */
+  .status-bar {
+    height: 44px;
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    flex-shrink: 0;
+  }
+  .status-time { font-size: 14px; font-weight: 600; color: var(--text); }
+  .status-icons { display: flex; gap: 5px; align-items: center; }
+  .status-icons svg { opacity: .8; }
+
+  /* ======== SCREEN CONTENT ======== */
+  .screen {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .screen::-webkit-scrollbar { display: none; }
+
+  /* ======== TOPBAR ======== */
+  .topbar {
+    background: var(--surface);
+    border-bottom: 0.5px solid var(--border);
+    padding: 0 18px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .topbar-logo {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .logo-icon {
+    width: 26px; height: 26px; background: var(--accent);
+    border-radius: 6px; display: flex; align-items: center;
+    justify-content: center;
+  }
+  .logo-icon span { color: #fff; font-size: 9px; font-weight: 600; }
+  .logo-name { font-size: 15px; font-weight: 500; color: var(--text); }
+  .logo-name em { font-style: italic; color: var(--accent2); }
+  .topbar-actions { display: flex; gap: 8px; align-items: center; }
+  .icon-btn {
+    width: 30px; height: 30px; border-radius: 7px;
+    border: 0.5px solid var(--border2); background: var(--surface2);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text2); position: relative;
+  }
+  .badge-dot {
+    position: absolute; top: -3px; right: -3px;
+    width: 14px; height: 14px; background: var(--sr); color: #fff;
+    font-size: 8px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-weight: 600;
+  }
+
+  /* ======== PAGE TITLE ======== */
+  .page-title {
+    font-size: 13px; font-weight: 500; color: var(--text);
+  }
+
+  /* ======== CONTENT AREA ======== */
+  .content {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: var(--bg);
+  }
+  .content::-webkit-scrollbar { display: none; }
+
+  /* ======== GREETING ======== */
+  .greeting-name {
+    font-family: 'DM Serif Display', serif;
+    font-size: 20px; color: var(--text); font-weight: 400;
+  }
+  .greeting-date { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+  /* ======== STATS SCROLL ======== */
+  .stats-scroll {
+    display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;
+    margin: 0 -16px; padding-left: 16px; padding-right: 16px;
+  }
+  .stats-scroll::-webkit-scrollbar { display: none; }
+  .stat-card {
+    background: var(--surface); border-radius: 12px;
+    padding: 12px 14px; min-width: 100px; flex-shrink: 0;
+  }
+  .stat-label {
+    font-size: 9px; color: var(--text3); font-weight: 600;
+    text-transform: uppercase; letter-spacing: .07em; margin-bottom: 4px;
+  }
+  .stat-value {
+    font-family: 'DM Serif Display', serif;
+    font-size: 28px; color: var(--text); line-height: 1; font-weight: 400;
+  }
+  .stat-sub { font-size: 10px; margin-top: 2px; }
+
+  /* ======== SECTION CARD ======== */
+  .section-card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .section-header {
+    padding: 11px 14px;
+    border-bottom: 0.5px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .section-title { font-size: 13px; font-weight: 500; color: var(--text); }
+  .section-link { font-size: 11px; color: var(--accent); }
+  .section-sub { font-size: 11px; color: var(--text3); }
+
+  /* ======== CONV ITEM ======== */
+  .conv-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 0.5px solid var(--border);
+  }
+  .avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; flex-shrink: 0;
+  }
+  .conv-name { font-size: 13px; font-weight: 500; color: var(--text); }
+  .conv-preview {
+    font-size: 11px; color: var(--text3); margin-top: 1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;
+  }
+  .conv-meta { text-align: right; flex-shrink: 0; }
+  .conv-time { font-size: 10px; color: var(--text3); margin-bottom: 3px; }
+  .badge {
+    display: inline-flex; padding: 1px 7px;
+    border-radius: 20px; font-size: 9px; font-weight: 600;
+  }
+
+  /* ======== LEADS CHART ======== */
+  .chart-bars {
+    display: flex; align-items: flex-end; gap: 6px;
+    height: 72px; padding: 8px 14px 0;
+  }
+  .bar-col {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; gap: 4px;
+  }
+  .bar-count { font-size: 9px; color: var(--accent); font-weight: 500; }
+  .bar-wrap { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+  .bar { width: 100%; border-radius: 3px 3px 0 0; }
+  .bar-label { font-size: 9px; color: var(--text3); padding: 4px 0 8px; }
+
+  /* ======== VISIT ITEM ======== */
+  .visit-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-bottom: 0.5px solid var(--border);
+  }
+  .visit-time-box {
+    background: var(--surface2); border-radius: 8px;
+    padding: 5px 9px; text-align: center; flex-shrink: 0;
+  }
+  .visit-time {
+    font-family: 'DM Serif Display', serif;
+    font-size: 14px; font-weight: 400; color: var(--text); line-height: 1;
+  }
+
+  /* ======== BOTTOM NAV ======== */
+  .bottom-nav {
+    height: var(--nav-h);
+    background: var(--surface);
+    border-top: 0.5px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 4px 8px;
+    flex-shrink: 0;
+  }
+  .nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 8px 4px 4px;
+    border-radius: 10px;
+    position: relative;
+  }
+  .nav-item.active { background: var(--accent-light); }
+  .nav-label { font-size: 9px; font-weight: 500; }
+  .nav-item.active .nav-label { color: var(--accent); }
+  .nav-item:not(.active) .nav-label { color: var(--text3); }
+  .nav-item.active svg { color: var(--accent); }
+  .nav-item:not(.active) svg { color: var(--text3); }
+  .nav-badge {
+    position: absolute; top: 6px; right: calc(50% - 14px);
+    width: 14px; height: 14px; background: var(--sr); color: #fff;
+    font-size: 8px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-weight: 700;
+  }
+
+  /* ======== PROPIEDADES ======== */
+  .prop-card {
+    background: var(--surface);
+    border-radius: 12px;
+    overflow: hidden;
+    border: 0.5px solid var(--border);
+  }
+  .prop-img {
+    height: 130px;
+    background: linear-gradient(135deg, #c8ddd4 0%, #e0ede8 100%);
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .prop-img-label {
+    font-family: 'DM Serif Display', serif;
+    font-size: 32px; color: var(--accent); opacity: .25;
+  }
+  .prop-badge-overlay {
+    position: absolute; top: 10px; right: 10px;
+  }
+  .prop-info { padding: 12px; }
+  .prop-name { font-size: 14px; font-weight: 500; color: var(--text); }
+  .prop-loc { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .prop-price {
+    font-family: 'DM Serif Display', serif;
+    font-size: 18px; color: var(--accent); margin-top: 6px;
+  }
+  .prop-details { display: flex; gap: 10px; margin-top: 6px; }
+  .prop-detail { font-size: 11px; color: var(--text2); display: flex; align-items: center; gap: 3px; }
+
+  /* ======== SEARCH BAR ======== */
+  .search-bar {
+    background: var(--surface);
+    border: 0.5px solid var(--border2);
+    border-radius: 10px;
+    height: 38px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 12px;
+    color: var(--text3); font-size: 13px;
+  }
+
+  /* ======== CHAT SCREEN ======== */
+  .chat-topbar {
+    background: var(--surface);
+    border-bottom: 0.5px solid var(--border);
+    padding: 0 14px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .chat-back { color: var(--accent); font-size: 22px; line-height: 1; }
+  .chat-contact-info { flex: 1; }
+  .chat-contact-name { font-size: 14px; font-weight: 500; color: var(--text); }
+  .chat-contact-sub { font-size: 11px; color: var(--text3); }
+  .chat-area {
+    flex: 1; padding: 12px; display: flex; flex-direction: column;
+    gap: 8px; overflow-y: auto; background: var(--bg);
+  }
+  .chat-area::-webkit-scrollbar { display: none; }
+  .msg { max-width: 72%; }
+  .msg.bot, .msg.agent { align-self: flex-start; }
+  .msg.client { align-self: flex-end; }
+  .msg-bubble {
+    padding: 8px 12px; border-radius: 14px; font-size: 13px;
+    line-height: 1.45;
+  }
+  .msg.bot .msg-bubble {
+    background: var(--surface); color: var(--text);
+    border-bottom-left-radius: 4px;
+    border: 0.5px solid var(--border);
+  }
+  .msg.agent .msg-bubble {
+    background: var(--accent-light); color: var(--accent-text);
+    border-bottom-left-radius: 4px;
+  }
+  .msg.client .msg-bubble {
+    background: var(--accent); color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .msg-meta { font-size: 9px; color: var(--text3); margin-top: 2px; padding: 0 2px; }
+  .msg.client .msg-meta { text-align: right; }
+  .msg-sender { font-size: 9px; font-weight: 600; margin-bottom: 2px; color: var(--text3); }
+  .chat-input-bar {
+    background: var(--surface);
+    border-top: 0.5px solid var(--border);
+    padding: 10px 12px;
+    display: flex; gap: 8px; align-items: flex-end;
+    flex-shrink: 0;
+  }
+  .chat-input {
+    flex: 1; background: var(--surface2); border-radius: 20px;
+    padding: 8px 14px; font-size: 13px; color: var(--text3);
+    border: 0.5px solid var(--border2);
+  }
+  .send-btn {
+    width: 36px; height: 36px; background: var(--accent);
+    border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; flex-shrink: 0;
+  }
+
+  /* ======== MODE TOGGLE ======== */
+  .mode-selector {
+    display: flex; background: var(--surface2);
+    border-radius: 8px; padding: 3px; gap: 2px;
+  }
+  .mode-btn {
+    flex: 1; padding: 4px 8px; border-radius: 6px; text-align: center;
+    font-size: 10px; font-weight: 500; color: var(--text3);
+  }
+  .mode-btn.active { background: var(--surface); color: var(--accent); }
+
+  /* ======== CLIENTES ======== */
+  .client-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 14px; border-bottom: 0.5px solid var(--border);
+  }
+  .client-name { font-size: 13px; font-weight: 500; color: var(--text); }
+  .client-phone { font-size: 11px; color: var(--text3); margin-top: 1px; }
+  .client-actions { display: flex; gap: 6px; margin-left: auto; }
+  .action-btn {
+    width: 28px; height: 28px; border-radius: 7px;
+    border: 0.5px solid var(--border2); background: var(--surface2);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text2);
+  }
+
+  /* ======== LOGIN ======== */
+  .login-screen {
+    display: flex; flex-direction: column;
+    justify-content: center; flex: 1;
+    padding: 32px 24px;
+    gap: 24px;
+  }
+  .login-logo {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+  }
+  .login-logo-icon {
+    width: 52px; height: 52px; background: var(--accent);
+    border-radius: 14px; display: flex; align-items: center;
+    justify-content: center;
+  }
+  .login-logo-icon span { color: #fff; font-size: 18px; font-weight: 600; }
+  .login-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 22px; color: var(--text); text-align: center;
+  }
+  .login-title em { font-style: italic; color: var(--accent2); }
+  .login-subtitle { font-size: 13px; color: var(--text3); text-align: center; }
+  .input-field {
+    background: var(--surface);
+    border: 0.5px solid var(--border2);
+    border-radius: 10px;
+    padding: 13px 14px;
+    font-size: 14px; color: var(--text);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .input-field.active { border-color: var(--accent); }
+  .input-label { font-size: 11px; color: var(--text3); margin-bottom: 5px; font-weight: 500; }
+  .primary-btn {
+    background: var(--accent); color: #fff;
+    border-radius: 12px; padding: 14px;
+    text-align: center; font-size: 15px; font-weight: 500;
+  }
+  .divider-text {
+    text-align: center; font-size: 12px; color: var(--text3);
+  }
+
+  /* ======== RESERVAS ======== */
+  .reserva-card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+  }
+  .reserva-header {
+    padding: 10px 14px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .reserva-body { padding: 8px 14px 12px; border-top: 0.5px solid var(--border); }
+  .reserva-row { display: flex; gap: 6px; align-items: center; margin-bottom: 5px; }
+  .reserva-key { font-size: 11px; color: var(--text3); min-width: 60px; }
+  .reserva-val { font-size: 12px; color: var(--text); font-weight: 500; }
+
+  /* ======== SECTION PILLS ======== */
+  .pill-tabs {
+    display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px;
+  }
+  .pill-tabs::-webkit-scrollbar { display: none; }
+  .pill {
+    padding: 5px 14px; border-radius: 20px;
+    font-size: 12px; font-weight: 500; white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .pill.active { background: var(--accent); color: #fff; }
+  .pill:not(.active) { background: var(--surface); color: var(--text2); border: 0.5px solid var(--border2); }
+
+  /* ======== FAB ======== */
+  .fab {
+    position: absolute; bottom: 76px; right: 16px;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); display: flex;
+    align-items: center; justify-content: center;
+    box-shadow: 0 4px 16px rgba(42,74,62,.35);
+    z-index: 10;
+  }
+
+  /* ======== CONFIG ITEM ======== */
+  .config-section { margin-bottom: 4px; }
+  .config-label {
+    font-size: 10px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--text3);
+    padding: 8px 14px 4px;
+  }
+  .config-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px; background: var(--surface);
+    border-bottom: 0.5px solid var(--border);
+  }
+  .config-item:first-of-type { border-radius: 12px 12px 0 0; }
+  .config-item:last-of-type { border-radius: 0 0 12px 12px; border-bottom: none; }
+  .config-icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .config-text { flex: 1; }
+  .config-name { font-size: 13px; color: var(--text); font-weight: 500; }
+  .config-desc { font-size: 11px; color: var(--text3); margin-top: 1px; }
+  .chevron { color: var(--text3); }
+  .toggle-track {
+    width: 36px; height: 20px; border-radius: 10px;
+    position: relative; flex-shrink: 0;
+  }
+  .toggle-track.on { background: var(--accent); }
+  .toggle-track.off { background: var(--surface3); }
+  .toggle-thumb {
+    position: absolute; top: 2px;
+    width: 16px; height: 16px; border-radius: 50%; background: #fff;
+    transition: left .2s;
+  }
+  .toggle-track.on .toggle-thumb { left: 18px; }
+  .toggle-track.off .toggle-thumb { left: 2px; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>INMOBIL.IA — Diseño Móvil</h1>
+  <p>Prototipo de adaptación para Flutter · iOS y Android</p>
+</div>
+
+<div class="screens-grid">
+
+  <!-- ============================================================ -->
+  <!-- PANTALLA 1: LOGIN -->
+  <!-- ============================================================ -->
+  <div class="device">
+    <div class="device-label">Login</div>
+    <div class="phone-frame">
+      <div class="status-bar" style="background:var(--bg)">
+        <span class="status-time">9:41</span>
+        <div class="status-icons">
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor" style="color:var(--text)"><rect x="0" y="3" width="3" height="9" rx="1"/><rect x="4.5" y="2" width="3" height="10" rx="1"/><rect x="9" y="0" width="3" height="12" rx="1"/><rect x="13.5" y="0" width="2.5" height="12" rx="1" opacity=".3"/></svg>
+          <svg width="15" height="12" viewBox="0 0 15 12" fill="none" stroke="currentColor" strokeWidth="1.5" style="color:var(--text)"><path d="M1 4.5C3.5 2 6.5 1 7.5 1s4 1 6 3.5"/><path d="M3 6.5c1.2-1.3 2.8-2 4.5-2s3.3.7 4.5 2"/><circle cx="7.5" cy="10" r="1.5" fill="currentColor"/></svg>
+          <svg width="25" height="12" viewBox="0 0 25 12" fill="currentColor" style="color:var(--text)"><rect x="0" y="1" width="21" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.3"/><rect x="1.5" y="2.5" width="16" height="7" rx="1"/><path d="M22 4v4a2 2 0 000-4z"/></svg>
+        </div>
+      </div>
+      <div class="screen">
+        <div class="login-screen">
+          <div class="login-logo">
+            <div class="login-logo-icon"><span>IA</span></div>
+            <div>
+              <div class="login-title">Inmob<em>il.ia</em></div>
+              <div class="login-subtitle">CRM Inmobiliario con IA</div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <div>
+              <div class="input-label">Correo electrónico</div>
+              <div class="input-field active">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" strokeWidth="1.5"><rect x="1" y="4" width="14" height="9" rx="1.5"/><path d="M1 4l7 5 7-5"/></svg>
+                <span style="color:var(--text);font-size:14px;">agente@inmobilia.com</span>
+              </div>
+            </div>
+            <div>
+              <div class="input-label">Contraseña</div>
+              <div class="input-field">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--text3)" strokeWidth="1.5"><rect x="3" y="7" width="10" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 016 0v2"/></svg>
+                <span style="color:var(--text3);font-size:14px;">••••••••</span>
+              </div>
+            </div>
+            <div class="primary-btn">Iniciar sesión</div>
+            <div class="divider-text">¿Olvidaste tu contraseña? <span style="color:var(--accent);font-weight:500;">Recuperar</span></div>
+          </div>
+          <div style="text-align:center;font-size:11px;color:var(--text3);margin-top:auto;">
+            Inmobil.ia v2.1 · <span style="color:var(--accent);">Términos y privacidad</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- PANTALLA 2: DASHBOARD -->
+  <!-- ============================================================ -->
+  <div class="device">
+    <div class="device-label">Resumen (Dashboard)</div>
+    <div class="phone-frame">
+      <div class="status-bar">
+        <span class="status-time">9:41</span>
+        <div class="status-icons">
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor" style="color:var(--text)"><rect x="0" y="3" width="3" height="9" rx="1"/><rect x="4.5" y="2" width="3" height="10" rx="1"/><rect x="9" y="0" width="3" height="12" rx="1"/><rect x="13.5" y="0" width="2.5" height="12" rx="1" opacity=".3"/></svg>
+          <svg width="25" height="12" viewBox="0 0 25 12" fill="currentColor" style="color:var(--text)"><rect x="0" y="1" width="21" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.3"/><rect x="1.5" y="2.5" width="16" height="7" rx="1"/><path d="M22 4v4a2 2 0 000-4z"/></svg>
+        </div>
+      </div>
+      <div class="screen">
+        <div class="topbar">
+          <div class="topbar-logo">
+            <div class="logo-icon"><span>IA</span></div>
+            <span class="logo-name">Inmob<em>il.ia</em></span>
+          </div>
+          <div class="topbar-actions">
+            <div class="icon-btn">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="3.5"/><path d="M8 1.5v1M8 13.5v1M1.5 8h1M13.5 8h1M3.3 3.3l.7.7M12 12l.7.7M11.3 3.3l-.7.7M4.7 11.3l-.7.7"/></svg>
+            </div>
+            <div class="icon-btn">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 1.5a4.5 4.5 0 014.5 4.5c0 2 .8 3.5 1.5 4.5H2c.7-1 1.5-2.5 1.5-4.5A4.5 4.5 0 018 1.5z"/><path d="M6.5 13.5a1.5 1.5 0 003 0"/></svg>
+              <div class="badge-dot">3</div>
+            </div>
+          </div>
+        </div>
+        <div class="content">
+          <div>
+            <div class="greeting-name">Buen día, Luis</div>
+            <div class="greeting-date">Sábado, 18 de abril de 2026</div>
+          </div>
+
+          <!-- Stats horizontal scroll -->
+          <div class="stats-scroll">
+            <div class="stat-card">
+              <div class="stat-label">Propiedades</div>
+              <div class="stat-value">24</div>
+              <div class="stat-sub" style="color:var(--sb)">activas</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Proyectos</div>
+              <div class="stat-value">6</div>
+              <div class="stat-sub" style="color:var(--sp)">activos</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Clientes</div>
+              <div class="stat-value">138</div>
+              <div class="stat-sub" style="color:var(--sg)">registrados</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Reservas</div>
+              <div class="stat-value">7</div>
+              <div class="stat-sub" style="color:var(--sa)">pendientes</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Leads hoy</div>
+              <div class="stat-value">12</div>
+              <div class="stat-sub" style="color:var(--accent)">nuevos</div>
+            </div>
+          </div>
+
+          <!-- Conversaciones recientes -->
+          <div class="section-card">
+            <div class="section-header">
+              <div class="section-title">Conversaciones recientes</div>
+              <div class="section-link">Ver todas →</div>
+            </div>
+            <div class="conv-item">
+              <div class="avatar" style="background:var(--sab);color:var(--sa)">MA</div>
+              <div style="flex:1;overflow:hidden">
+                <div class="conv-name">María Andrade</div>
+                <div class="conv-preview">Bot: Hola María, ¿en qué puedo ayudarte?</div>
+              </div>
+              <div class="conv-meta">
+                <div class="conv-time">2m</div>
+                <div class="badge" style="background:var(--sgb);color:var(--sg)">bot</div>
+              </div>
+            </div>
+            <div class="conv-item">
+              <div class="avatar" style="background:var(--sbb);color:var(--sb)">CR</div>
+              <div style="flex:1;overflow:hidden">
+                <div class="conv-name">Carlos Ríos</div>
+                <div class="conv-preview">Tú: Mañana le confirmo el horario...</div>
+              </div>
+              <div class="conv-meta">
+                <div class="conv-time">1h</div>
+                <div class="badge" style="background:var(--sab);color:var(--sa)">manual</div>
+              </div>
+            </div>
+            <div class="conv-item">
+              <div class="avatar" style="background:var(--sgb);color:var(--sg)">LV</div>
+              <div style="flex:1;overflow:hidden">
+                <div class="conv-name">Lucía Vargas</div>
+                <div class="conv-preview">Bot: Le envío las fotos del proyecto...</div>
+              </div>
+              <div class="conv-meta">
+                <div class="conv-time">3h</div>
+                <div class="badge" style="background:var(--sgb);color:var(--sg)">bot</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Gráfico leads -->
+          <div class="section-card">
+            <div class="section-header">
+              <div class="section-title">Leads por día</div>
+              <div class="section-sub">últimos 7 días</div>
+            </div>
+            <div class="chart-bars">
+              <div class="bar-col">
+                <div class="bar-wrap"><div class="bar" style="height:20px;background:var(--accent-light)"></div></div>
+                <div class="bar-label">L</div>
+              </div>
+              <div class="bar-col">
+                <div class="bar-count">3</div>
+                <div class="bar-wrap"><div class="bar" style="height:26px;background:var(--accent-light)"></div></div>
+                <div class="bar-label">M</div>
+              </div>
+              <div class="bar-col">
+                <div class="bar-count">5</div>
+                <div class="bar-wrap"><div class="bar" style="height:40px;background:var(--accent-light)"></div></div>
+                <div class="bar-label">X</div>
+              </div>
+              <div class="bar-col">
+                <div class="bar-count">2</div>
+                <div class="bar-wrap"><div class="bar" style="height:18px;background:var(--accent-light)"></div></div>
+                <div class="bar-label">J</div>
+              </div>
+              <div class="bar-col">
+                <div class="bar-count">8</div>
+                <div class="bar-wrap"><div class="bar" style="height:54px;background:var(--accent-light)"></div></div>
+                <div class="bar-label">V</div>
+              </div>
+              <div class="bar-col">
+                <div class="bar-count">4</div>
+                <div class="bar-wrap"><div class="bar" style="height:32px;background:var(--accent-light)"></div></div>
+                <div class="bar-label">S</div>
+              </div>
+              <div class="bar-col">
+                <div class="bar-count" style="color:var(--accent);font-weight:600;">12</div>
+                <div class="bar-wrap"><div class="bar" style="height:64px;background:var(--accent)"></div></div>
+                <div class="bar-label" style="color:var(--accent);font-weight:600;">D</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="height:8px"></div>
+        </div>
+        <!-- Bottom Nav -->
+        <div class="bottom-nav">
+          <div class="nav-item active">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
+            <span class="nav-label">Resumen</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 8L8 2l7 6"/><path d="M3 6.5V14h3.5v-3.5h3V14H13V6.5"/></svg>
+            <span class="nav-label">Propiedades</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 10.5c0 .8-.7 1.5-1.5 1.5H4l-2.5 2.5V3.5C1.5 2.7 2.2 2 3 2h10c.8 0 1.5.7 1.5 1.5v7z"/></svg>
+            <div class="nav-badge">3</div>
+            <span class="nav-label">Chats</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>
+            <span class="nav-label">Clientes</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.3 3.3l1.4 1.4M11.3 11.3l1.4 1.4M11.3 3.3l-1.4 1.4M4.7 11.3l-1.4 1.4"/></svg>
+            <span class="nav-label">Config</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- PANTALLA 3: PROPIEDADES -->
+  <!-- ============================================================ -->
+  <div class="device">
+    <div class="device-label">Propiedades</div>
+    <div class="phone-frame">
+      <div class="status-bar">
+        <span class="status-time">9:41</span>
+        <div class="status-icons">
+          <svg width="25" height="12" viewBox="0 0 25 12" fill="currentColor" style="color:var(--text)"><rect x="0" y="1" width="21" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.3"/><rect x="1.5" y="2.5" width="16" height="7" rx="1"/><path d="M22 4v4a2 2 0 000-4z"/></svg>
+        </div>
+      </div>
+      <div class="screen">
+        <div class="topbar">
+          <div class="page-title">Propiedades</div>
+          <div class="topbar-actions">
+            <div class="icon-btn">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="6.5" cy="6.5" r="4.5"/><path d="M11.5 11.5L15 15"/></svg>
+            </div>
+            <div class="icon-btn" style="background:var(--accent);border-color:var(--accent);">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#fff" strokeWidth="2"><path d="M8 2v12M2 8h12"/></svg>
+            </div>
+          </div>
+        </div>
+        <div class="content">
+          <div class="search-bar">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="6.5" cy="6.5" r="4.5"/><path d="M11.5 11.5L15 15"/></svg>
+            Buscar propiedades…
+          </div>
+          <div class="pill-tabs">
+            <div class="pill active">Todas</div>
+            <div class="pill">Apartamentos</div>
+            <div class="pill">Casas</div>
+            <div class="pill">Locales</div>
+            <div class="pill">Terrenos</div>
+          </div>
+
+          <div class="prop-card">
+            <div class="prop-img">
+              <div class="prop-img-label">⌂</div>
+              <div class="prop-badge-overlay">
+                <div class="badge" style="background:var(--sgb);color:var(--sg)">Activa</div>
+              </div>
+            </div>
+            <div class="prop-info">
+              <div class="prop-name">Apartamento Mirador Norte</div>
+              <div class="prop-loc">📍 Quito, Pichincha</div>
+              <div class="prop-price">$185,000</div>
+              <div class="prop-details">
+                <div class="prop-detail"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 11V6l7-4 7 4v5M4 11V8h8v3"/></svg> 3 hab.</div>
+                <div class="prop-detail"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="6" width="12" height="8" rx="1"/><path d="M5 6V4a3 3 0 016 0v2"/></svg> 2 baños</div>
+                <div class="prop-detail">120 m²</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="prop-card">
+            <div class="prop-img" style="background:linear-gradient(135deg,#c8d4e8 0%,#dde8f0 100%)">
+              <div class="prop-img-label" style="color:var(--sb)">⌂</div>
+              <div class="prop-badge-overlay">
+                <div class="badge" style="background:var(--sab);color:var(--sa)">En venta</div>
+              </div>
+            </div>
+            <div class="prop-info">
+              <div class="prop-name">Casa Conjunto Valle</div>
+              <div class="prop-loc">📍 Cumbayá, Pichincha</div>
+              <div class="prop-price">$295,000</div>
+              <div class="prop-details">
+                <div class="prop-detail">4 hab.</div>
+                <div class="prop-detail">3 baños</div>
+                <div class="prop-detail">210 m²</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="height:8px"></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
+            <span class="nav-label">Resumen</span>
+          </div>
+          <div class="nav-item active">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 8L8 2l7 6"/><path d="M3 6.5V14h3.5v-3.5h3V14H13V6.5"/></svg>
+            <span class="nav-label">Propiedades</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 10.5c0 .8-.7 1.5-1.5 1.5H4l-2.5 2.5V3.5C1.5 2.7 2.2 2 3 2h10c.8 0 1.5.7 1.5 1.5v7z"/></svg>
+            <div class="nav-badge">3</div>
+            <span class="nav-label">Chats</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>
+            <span class="nav-label">Clientes</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.3 3.3l1.4 1.4M11.3 11.3l1.4 1.4M11.3 3.3l-1.4 1.4M4.7 11.3l-1.4 1.4"/></svg>
+            <span class="nav-label">Config</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- PANTALLA 4: CONVERSACIONES (LISTA) -->
+  <!-- ============================================================ -->
+  <div class="device">
+    <div class="device-label">Conversaciones</div>
+    <div class="phone-frame">
+      <div class="status-bar">
+        <span class="status-time">9:41</span>
+        <div class="status-icons">
+          <svg width="25" height="12" viewBox="0 0 25 12" fill="currentColor" style="color:var(--text)"><rect x="0" y="1" width="21" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.3"/><rect x="1.5" y="2.5" width="16" height="7" rx="1"/><path d="M22 4v4a2 2 0 000-4z"/></svg>
+        </div>
+      </div>
+      <div class="screen">
+        <div class="topbar">
+          <div class="page-title">Conversaciones</div>
+          <div class="topbar-actions">
+            <div class="icon-btn">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="6.5" cy="6.5" r="4.5"/><path d="M11.5 11.5L15 15"/></svg>
+            </div>
+          </div>
+        </div>
+        <div class="content" style="padding:12px 0;">
+          <div style="padding:0 14px 8px;">
+            <div class="mode-selector">
+              <div class="mode-btn active">Todas</div>
+              <div class="mode-btn">Bot</div>
+              <div class="mode-btn">Manual</div>
+              <div class="mode-btn">Pausadas</div>
+            </div>
+          </div>
+
+          <!-- Items de conversación -->
+          <div class="section-card" style="border-radius:0;border-left:none;border-right:none;">
+            <div class="conv-item" style="padding:12px 16px;">
+              <div class="avatar" style="background:var(--sab);color:var(--sa);width:40px;height:40px;font-size:13px;">MA</div>
+              <div style="flex:1;overflow:hidden;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <div class="conv-name">María Andrade</div>
+                  <div style="font-size:10px;color:var(--text3);">2m</div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
+                  <div class="conv-preview" style="max-width:190px;">Bot: Hola, ¿en qué le puedo ayudar hoy?</div>
+                  <div class="badge" style="background:var(--sgb);color:var(--sg);">bot</div>
+                </div>
+              </div>
+            </div>
+            <div class="conv-item" style="padding:12px 16px;background:var(--surface2);">
+              <div class="avatar" style="background:var(--sbb);color:var(--sb);width:40px;height:40px;font-size:13px;">CR</div>
+              <div style="flex:1;overflow:hidden;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <div class="conv-name">Carlos Ríos <span style="display:inline-flex;width:8px;height:8px;background:var(--sr);border-radius:50%;margin-left:5px;"></span></div>
+                  <div style="font-size:10px;color:var(--text3);">1h</div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
+                  <div class="conv-preview" style="max-width:190px;">Mañana le confirmo el horario disponible</div>
+                  <div class="badge" style="background:var(--sab);color:var(--sa);">manual</div>
+                </div>
+              </div>
+            </div>
+            <div class="conv-item" style="padding:12px 16px;">
+              <div class="avatar" style="background:var(--sgb);color:var(--sg);width:40px;height:40px;font-size:13px;">LV</div>
+              <div style="flex:1;overflow:hidden;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <div class="conv-name">Lucía Vargas</div>
+                  <div style="font-size:10px;color:var(--text3);">3h</div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
+                  <div class="conv-preview" style="max-width:190px;">Bot: Le envío las fotos del proyecto Valle</div>
+                  <div class="badge" style="background:var(--sgb);color:var(--sg);">bot</div>
+                </div>
+              </div>
+            </div>
+            <div class="conv-item" style="padding:12px 16px;">
+              <div class="avatar" style="background:var(--spb);color:var(--sp);width:40px;height:40px;font-size:13px;">JP</div>
+              <div style="flex:1;overflow:hidden;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <div class="conv-name">Juan Pérez</div>
+                  <div style="font-size:10px;color:var(--text3);">1d</div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
+                  <div class="conv-preview" style="max-width:190px;">¿Tienen disponibilidad el sábado?</div>
+                  <div class="badge" style="background:var(--sgrb);color:var(--sgr);">pausado</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
+            <span class="nav-label">Resumen</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 8L8 2l7 6"/><path d="M3 6.5V14h3.5v-3.5h3V14H13V6.5"/></svg>
+            <span class="nav-label">Propiedades</span>
+          </div>
+          <div class="nav-item active">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 10.5c0 .8-.7 1.5-1.5 1.5H4l-2.5 2.5V3.5C1.5 2.7 2.2 2 3 2h10c.8 0 1.5.7 1.5 1.5v7z"/></svg>
+            <div class="nav-badge">3</div>
+            <span class="nav-label">Chats</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>
+            <span class="nav-label">Clientes</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.3 3.3l1.4 1.4M11.3 11.3l1.4 1.4M11.3 3.3l-1.4 1.4M4.7 11.3l-1.4 1.4"/></svg>
+            <span class="nav-label">Config</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- PANTALLA 5: CHAT INDIVIDUAL -->
+  <!-- ============================================================ -->
+  <div class="device">
+    <div class="device-label">Chat Individual</div>
+    <div class="phone-frame">
+      <div class="status-bar">
+        <span class="status-time">9:41</span>
+        <div class="status-icons">
+          <svg width="25" height="12" viewBox="0 0 25 12" fill="currentColor" style="color:var(--text)"><rect x="0" y="1" width="21" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.3"/><rect x="1.5" y="2.5" width="16" height="7" rx="1"/><path d="M22 4v4a2 2 0 000-4z"/></svg>
+        </div>
+      </div>
+      <div class="screen">
+        <div class="chat-topbar">
+          <div class="chat-back">‹</div>
+          <div class="avatar" style="background:var(--sab);color:var(--sa);width:36px;height:36px;font-size:12px;flex-shrink:0;">MA</div>
+          <div class="chat-contact-info">
+            <div class="chat-contact-name">María Andrade</div>
+            <div class="chat-contact-sub">+593 987 654 321</div>
+          </div>
+          <div class="mode-selector" style="width:auto;">
+            <div class="mode-btn active" style="padding:3px 8px;">bot</div>
+            <div class="mode-btn" style="padding:3px 8px;">manual</div>
+          </div>
+        </div>
+
+        <div class="chat-area">
+          <div class="msg bot">
+            <div class="msg-sender">🤖 Bot</div>
+            <div class="msg-bubble">Hola María, bienvenida a Inmobil.ia. ¿En qué le puedo ayudar hoy? Tenemos propiedades disponibles en Quito y Cumbayá.</div>
+            <div class="msg-meta">09:15</div>
+          </div>
+          <div class="msg client">
+            <div class="msg-bubble">Hola, estoy buscando un apartamento de 3 habitaciones, presupuesto hasta 200.000</div>
+            <div class="msg-meta">09:16 ✓✓</div>
+          </div>
+          <div class="msg bot">
+            <div class="msg-sender">🤖 Bot</div>
+            <div class="msg-bubble">Perfecto, tenemos varias opciones que se ajustan a su presupuesto. ¿Prefiere Norte, Sur o Valles de Quito?</div>
+            <div class="msg-meta">09:16</div>
+          </div>
+          <div class="msg client">
+            <div class="msg-bubble">Norte, zona de La Floresta o González Suárez</div>
+            <div class="msg-meta">09:18 ✓✓</div>
+          </div>
+          <div class="msg agent">
+            <div class="msg-sender">👤 Tú</div>
+            <div class="msg-bubble">María, tenemos el Apartamento Mirador Norte en $185,000. ¿Le gustaría agendar una visita?</div>
+            <div class="msg-meta">09:22</div>
+          </div>
+          <div class="msg client">
+            <div class="msg-bubble">Sí, ¿tienen disponibilidad este sábado?</div>
+            <div class="msg-meta">09:23 ✓✓</div>
+          </div>
+        </div>
+
+        <div class="chat-input-bar">
+          <div class="icon-btn" style="flex-shrink:0;">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 1v14M1 8h14"/></svg>
+          </div>
+          <div class="chat-input">Escribe un mensaje…</div>
+          <div class="send-btn">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#fff" strokeWidth="1.8"><path d="M14.5 1.5L1 8.5l5 1.5 2 5 6.5-13.5z"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- PANTALLA 6: CLIENTES -->
+  <!-- ============================================================ -->
+  <div class="device">
+    <div class="device-label">Clientes</div>
+    <div class="phone-frame">
+      <div class="status-bar">
+        <span class="status-time">9:41</span>
+        <div class="status-icons">
+          <svg width="25" height="12" viewBox="0 0 25 12" fill="currentColor" style="color:var(--text)"><rect x="0" y="1" width="21" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.3"/><rect x="1.5" y="2.5" width="16" height="7" rx="1"/><path d="M22 4v4a2 2 0 000-4z"/></svg>
+        </div>
+      </div>
+      <div class="screen">
+        <div class="topbar">
+          <div class="page-title">Clientes</div>
+          <div class="topbar-actions">
+            <div class="icon-btn">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="6.5" cy="6.5" r="4.5"/><path d="M11.5 11.5L15 15"/></svg>
+            </div>
+            <div class="icon-btn" style="background:var(--accent);border-color:var(--accent);">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#fff" strokeWidth="2"><path d="M8 2v12M2 8h12"/></svg>
+            </div>
+          </div>
+        </div>
+        <div class="content" style="padding:12px 0">
+          <div style="padding:0 14px 10px;">
+            <div class="search-bar">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="6.5" cy="6.5" r="4.5"/><path d="M11.5 11.5L15 15"/></svg>
+              Buscar clientes…
+            </div>
+          </div>
+          <div class="section-card" style="border-radius:0;border-left:none;border-right:none;">
+            <div class="client-item">
+              <div class="avatar" style="background:var(--sab);color:var(--sa);width:40px;height:40px;font-size:13px;">MA</div>
+              <div>
+                <div class="client-name">María Andrade</div>
+                <div class="client-phone">+593 987 654 321 · Verificado ✓</div>
+              </div>
+              <div class="client-actions">
+                <div class="action-btn">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 10.5c0 .8-.7 1.5-1.5 1.5H4l-2.5 2.5V3.5C1.5 2.7 2.2 2 3 2h10c.8 0 1.5.7 1.5 1.5v7z"/></svg>
+                </div>
+                <div class="action-btn">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="1"/><circle cx="4" cy="8" r="1"/><circle cx="12" cy="8" r="1"/></svg>
+                </div>
+              </div>
+            </div>
+            <div class="client-item">
+              <div class="avatar" style="background:var(--sbb);color:var(--sb);width:40px;height:40px;font-size:13px;">CR</div>
+              <div>
+                <div class="client-name">Carlos Ríos</div>
+                <div class="client-phone">+593 912 345 678</div>
+              </div>
+              <div class="client-actions">
+                <div class="action-btn">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 10.5c0 .8-.7 1.5-1.5 1.5H4l-2.5 2.5V3.5C1.5 2.7 2.2 2 3 2h10c.8 0 1.5.7 1.5 1.5v7z"/></svg>
+                </div>
+                <div class="action-btn">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="1"/><circle cx="4" cy="8" r="1"/><circle cx="12" cy="8" r="1"/></svg>
+                </div>
+              </div>
+            </div>
+            <div class="client-item">
+              <div class="avatar" style="background:var(--sgb);color:var(--sg);width:40px;height:40px;font-size:13px;">LV</div>
+              <div>
+                <div class="client-name">Lucía Vargas</div>
+                <div class="client-phone">+593 998 765 432 · Verificado ✓</div>
+              </div>
+              <div class="client-actions">
+                <div class="action-btn">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 10.5c0 .8-.7 1.5-1.5 1.5H4l-2.5 2.5V3.5C1.5 2.7 2.2 2 3 2h10c.8 0 1.5.7 1.5 1.5v7z"/></svg>
+                </div>
+                <div class="action-btn">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="1"/><circle cx="4" cy="8" r="1"/><circle cx="12" cy="8" r="1"/></svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
+            <span class="nav-label">Resumen</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 8L8 2l7 6"/><path d="M3 6.5V14h3.5v-3.5h3V14H13V6.5"/></svg>
+            <span class="nav-label">Propiedades</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 10.5c0 .8-.7 1.5-1.5 1.5H4l-2.5 2.5V3.5C1.5 2.7 2.2 2 3 2h10c.8 0 1.5.7 1.5 1.5v7z"/></svg>
+            <div class="nav-badge">3</div>
+            <span class="nav-label">Chats</span>
+          </div>
+          <div class="nav-item active">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>
+            <span class="nav-label">Clientes</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.3 3.3l1.4 1.4M11.3 11.3l1.4 1.4M11.3 3.3l-1.4 1.4M4.7 11.3l-1.4 1.4"/></svg>
+            <span class="nav-label">Config</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- PANTALLA 7: RESERVAS -->
+  <!-- ============================================================ -->
+  <div class="device">
+    <div class="device-label">Reservas / Visitas</div>
+    <div class="phone-frame">
+      <div class="status-bar">
+        <span class="status-time">9:41</span>
+        <div class="status-icons">
+          <svg width="25" height="12" viewBox="0 0 25 12" fill="currentColor" style="color:var(--text)"><rect x="0" y="1" width="21" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.3"/><rect x="1.5" y="2.5" width="16" height="7" rx="1"/><path d="M22 4v4a2 2 0 000-4z"/></svg>
+        </div>
+      </div>
+      <div class="screen">
+        <div class="topbar">
+          <div class="page-title">Reservas</div>
+          <div class="topbar-actions">
+            <div class="icon-btn" style="background:var(--accent);border-color:var(--accent);">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#fff" strokeWidth="2"><path d="M8 2v12M2 8h12"/></svg>
+            </div>
+          </div>
+        </div>
+        <div class="content">
+          <div class="pill-tabs">
+            <div class="pill active">Hoy</div>
+            <div class="pill">Esta semana</div>
+            <div class="pill">Pendientes</div>
+            <div class="pill">Historial</div>
+          </div>
+
+          <div style="font-size:12px;font-weight:600;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;">
+            Sábado 18 de abril
+          </div>
+
+          <div class="reserva-card">
+            <div class="reserva-header">
+              <div>
+                <div style="font-family:'DM Serif Display',serif;font-size:16px;color:var(--text);">10:00 AM</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:1px;">María Andrade</div>
+              </div>
+              <div class="badge" style="background:var(--sgb);color:var(--sg);font-size:11px;padding:3px 10px;">confirmada</div>
+            </div>
+            <div class="reserva-body">
+              <div class="reserva-row">
+                <div class="reserva-key">Propiedad</div>
+                <div class="reserva-val">Apt. Mirador Norte</div>
+              </div>
+              <div class="reserva-row">
+                <div class="reserva-key">Contacto</div>
+                <div class="reserva-val">+593 987 654 321</div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:8px;">
+                <div style="flex:1;padding:7px;background:var(--sgb);border-radius:8px;text-align:center;font-size:12px;color:var(--sg);font-weight:500;">✓ Confirmar</div>
+                <div style="flex:1;padding:7px;background:var(--srb);border-radius:8px;text-align:center;font-size:12px;color:var(--sr);font-weight:500;">✕ Cancelar</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="reserva-card">
+            <div class="reserva-header">
+              <div>
+                <div style="font-family:'DM Serif Display',serif;font-size:16px;color:var(--text);">3:30 PM</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:1px;">Carlos Ríos</div>
+              </div>
+              <div class="badge" style="background:var(--sab);color:var(--sa);font-size:11px;padding:3px 10px;">pendiente</div>
+            </div>
+            <div class="reserva-body">
+              <div class="reserva-row">
+                <div class="reserva-key">Propiedad</div>
+                <div class="reserva-val">Casa Valle Conjunto</div>
+              </div>
+              <div class="reserva-row">
+                <div class="reserva-key">Contacto</div>
+                <div class="reserva-val">+593 912 345 678</div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:8px;">
+                <div style="flex:1;padding:7px;background:var(--sgb);border-radius:8px;text-align:center;font-size:12px;color:var(--sg);font-weight:500;">✓ Confirmar</div>
+                <div style="flex:1;padding:7px;background:var(--srb);border-radius:8px;text-align:center;font-size:12px;color:var(--sr);font-weight:500;">✕ Cancelar</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
+            <span class="nav-label">Resumen</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 8L8 2l7 6"/><path d="M3 6.5V14h3.5v-3.5h3V14H13V6.5"/></svg>
+            <span class="nav-label">Propiedades</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 10.5c0 .8-.7 1.5-1.5 1.5H4l-2.5 2.5V3.5C1.5 2.7 2.2 2 3 2h10c.8 0 1.5.7 1.5 1.5v7z"/></svg>
+            <div class="nav-badge">3</div>
+            <span class="nav-label">Chats</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>
+            <span class="nav-label">Clientes</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.3 3.3l1.4 1.4M11.3 11.3l1.4 1.4M11.3 3.3l-1.4 1.4M4.7 11.3l-1.4 1.4"/></svg>
+            <span class="nav-label">Config</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- PANTALLA 8: CONFIGURACIÓN -->
+  <!-- ============================================================ -->
+  <div class="device">
+    <div class="device-label">Configuración</div>
+    <div class="phone-frame">
+      <div class="status-bar">
+        <span class="status-time">9:41</span>
+        <div class="status-icons">
+          <svg width="25" height="12" viewBox="0 0 25 12" fill="currentColor" style="color:var(--text)"><rect x="0" y="1" width="21" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.3"/><rect x="1.5" y="2.5" width="16" height="7" rx="1"/><path d="M22 4v4a2 2 0 000-4z"/></svg>
+        </div>
+      </div>
+      <div class="screen">
+        <div class="topbar">
+          <div class="page-title">Configuración</div>
+        </div>
+        <div class="content">
+          <!-- Perfil -->
+          <div style="background:var(--surface);border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px;border:0.5px solid var(--border);">
+            <div class="avatar" style="width:48px;height:48px;font-size:16px;background:var(--accent);color:#fff;flex-shrink:0;">LF</div>
+            <div>
+              <div style="font-size:15px;font-weight:500;color:var(--text);">Luis Fernando</div>
+              <div style="font-size:12px;color:var(--text3);margin-top:1px;">luiferperez26@gmail.com</div>
+            </div>
+            <div style="margin-left:auto;font-size:18px;color:var(--text3);">›</div>
+          </div>
+
+          <!-- App -->
+          <div class="config-section">
+            <div class="config-label">Apariencia</div>
+            <div style="background:var(--surface);border-radius:12px;border:0.5px solid var(--border);overflow:hidden;">
+              <div class="config-item">
+                <div class="config-icon" style="background:var(--surface2);">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--text2)" strokeWidth="1.5"><circle cx="8" cy="8" r="3.5"/><path d="M8 1.5v1M8 13.5v1M1.5 8h1M13.5 8h1"/></svg>
+                </div>
+                <div class="config-text">
+                  <div class="config-name">Modo oscuro</div>
+                  <div class="config-desc">Tema de la aplicación</div>
+                </div>
+                <div class="toggle-track off"><div class="toggle-thumb"></div></div>
+              </div>
+              <div class="config-item">
+                <div class="config-icon" style="background:var(--surface2);">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--text2)" strokeWidth="1.5"><path d="M8 1.5a4.5 4.5 0 014.5 4.5c0 2 .8 3.5 1.5 4.5H2c.7-1 1.5-2.5 1.5-4.5A4.5 4.5 0 018 1.5z"/><path d="M6.5 13.5a1.5 1.5 0 003 0"/></svg>
+                </div>
+                <div class="config-text">
+                  <div class="config-name">Notificaciones push</div>
+                  <div class="config-desc">Nuevos leads y mensajes</div>
+                </div>
+                <div class="toggle-track on"><div class="toggle-thumb"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bot IA -->
+          <div class="config-section">
+            <div class="config-label">Bot IA</div>
+            <div style="background:var(--surface);border-radius:12px;border:0.5px solid var(--border);overflow:hidden;">
+              <div class="config-item">
+                <div class="config-icon" style="background:var(--sgb);">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--sg)" strokeWidth="1.5"><rect x="2" y="4" width="12" height="9" rx="2"/><path d="M5 4V3a3 3 0 016 0v1M8 7.5v2M6.5 9h3"/></svg>
+                </div>
+                <div class="config-text">
+                  <div class="config-name">Personalidad del bot</div>
+                  <div class="config-desc">Profesional · Amigable</div>
+                </div>
+                <div class="chevron">›</div>
+              </div>
+              <div class="config-item">
+                <div class="config-icon" style="background:var(--spb);">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--sp)" strokeWidth="1.5"><path d="M14 10.5c0 .8-.7 1.5-1.5 1.5H4l-2.5 2.5V3.5C1.5 2.7 2.2 2 3 2h10c.8 0 1.5.7 1.5 1.5v7z"/></svg>
+                </div>
+                <div class="config-text">
+                  <div class="config-name">Respuestas rápidas</div>
+                  <div class="config-desc">Plantillas preconfiguradas</div>
+                </div>
+                <div class="chevron">›</div>
+              </div>
+              <div class="config-item">
+                <div class="config-icon" style="background:var(--sab);">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--sa)" strokeWidth="1.5"><circle cx="8" cy="8" r="6.5"/><path d="M8 4.5V8l2.5 2.5"/></svg>
+                </div>
+                <div class="config-text">
+                  <div class="config-name">Horario del bot</div>
+                  <div class="config-desc">Lun–Vie · 8:00–18:00</div>
+                </div>
+                <div class="chevron">›</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sesión -->
+          <div style="background:var(--srb);border-radius:12px;padding:13px 16px;border:0.5px solid rgba(153,31,31,.12);display:flex;align-items:center;gap:10px;">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--sr)" strokeWidth="1.5"><path d="M6 3H3a1 1 0 00-1 1v8a1 1 0 001 1h3M10 5l4 3-4 3M6 8h8"/></svg>
+            <span style="font-size:13px;font-weight:500;color:var(--sr);">Cerrar sesión</span>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
+            <span class="nav-label">Resumen</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 8L8 2l7 6"/><path d="M3 6.5V14h3.5v-3.5h3V14H13V6.5"/></svg>
+            <span class="nav-label">Propiedades</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 10.5c0 .8-.7 1.5-1.5 1.5H4l-2.5 2.5V3.5C1.5 2.7 2.2 2 3 2h10c.8 0 1.5.7 1.5 1.5v7z"/></svg>
+            <div class="nav-badge">3</div>
+            <span class="nav-label">Chats</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>
+            <span class="nav-label">Clientes</span>
+          </div>
+          <div class="nav-item active">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.3 3.3l1.4 1.4M11.3 11.3l1.4 1.4M11.3 3.3l-1.4 1.4M4.7 11.3l-1.4 1.4"/></svg>
+            <span class="nav-label">Config</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end screens-grid -->
+
+<div style="text-align:center;padding:20px 0 40px;font-size:12px;color:#6b6860;">
+  Inmobil.ia Mobile · Prototipo de diseño · 8 pantallas · Flutter (iOS + Android)
+</div>
+
+</body>
+</html>

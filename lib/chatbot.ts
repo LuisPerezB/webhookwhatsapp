@@ -1718,11 +1718,14 @@ async function mostrarHorariosProyecto(
         }
     }
 }
-async function listarCitasCliente(clienteId: number, tenantId: number): Promise<Respuesta> {
+async function listarCitasCliente(
+    clienteId: number,
+    tenantId: number
+): Promise<Respuesta> {
     const { data } = await supabase
         .from("reservas")
         .select(`
-            fecha, estado,
+            id, fecha, estado,
             propiedades:propiedad_id(nombre),
             proyectos:proyecto_id(nombre)
         `)
@@ -1731,7 +1734,7 @@ async function listarCitasCliente(clienteId: number, tenantId: number): Promise<
         .gte("fecha", new Date().toISOString())
         .is("deleted_at", null)
         .order("fecha", { ascending: true })
-        .limit(5)
+        .limit(5) // ← mostrar hasta 5 citas
 
     if (!data?.length) {
         return {
@@ -1746,27 +1749,46 @@ async function listarCitasCliente(clienteId: number, tenantId: number): Promise<
         }
     }
 
-    const citas = data.map((r: any, i) => {
+    // Agrupar por estado
+    const confirmadas = data.filter(r => r.estado === "confirmada")
+    const pendientes = data.filter(r => r.estado === "pendiente")
+
+    const formatCita = (r: any, i: number) => {
         const prop = r.propiedades as any
         const proy = r.proyectos as any
+        const nombre = prop?.nombre || proy?.nombre || "Visita"
         const fecha = new Date(r.fecha).toLocaleDateString("es-EC", {
             weekday: "short", day: "numeric", month: "short",
             hour: "2-digit", minute: "2-digit"
         })
-        const nombre = prop?.nombre || proy?.nombre || "Visita"
-        return `${i + 1}. ${nombre}\n   ${fecha} - ${r.estado}`
-    }).join("\n\n")
+        const estadoIcon = r.estado === "confirmada" ? "✅" : "⏳"
+        return `${estadoIcon} ${nombre}\n   ${fecha}`
+    }
+
+    const lineas: string[] = []
+
+    if (confirmadas.length) {
+        lineas.push("*Confirmadas:*")
+        confirmadas.forEach((r, i) => lineas.push(formatCita(r, i)))
+    }
+
+    if (pendientes.length) {
+        if (lineas.length) lineas.push("")
+        lineas.push("*Pendientes de confirmar:*")
+        pendientes.forEach((r, i) => lineas.push(formatCita(r, i)))
+    }
 
     return {
         tipo: "buttons",
         payload: {
-            header: "Tus citas proximas",
-            body: citas,
+            header: `Tus citas (${data.length})`,
+            body: lineas.join("\n"),
             buttons: [
                 { id: "hablar_agente", title: "Modificar cita" },
                 { id: "btn_propiedades", title: "Ver propiedades" },
                 { id: "menu_principal", title: "Menu principal" },
-            ]
+            ],
+            footer: "Escribe 'agente' para cancelar o reprogramar"
         }
     }
 }

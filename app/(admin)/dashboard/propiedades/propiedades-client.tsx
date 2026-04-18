@@ -76,8 +76,8 @@ export default function PropiedadesClient({
             precio: prop.precio || "",
             precio_negociable: prop.precio_negociable || false,
             estado: prop.estado || "disponible",
-            ciudad_id: prop.ciudad?.id || "",
-            sector_id: prop.sector?.id || "",
+            ciudad_id: prop.ciudad?.id || prop.ciudad_id || "",  // ← puede venir de dos formas
+            sector_id: prop.sector?.id || prop.sector_id || "",
             proyecto_id: prop.proyecto?.id || "",
             dimensiones: prop.dimensiones || {},
             ambientes: prop.ambientes || {},
@@ -95,6 +95,9 @@ export default function PropiedadesClient({
     }
 
     const guardar = async () => {
+        console.log("ciudad_id antes de enviar:", form.ciudad_id)
+        console.log("sector_id antes de enviar:", form.sector_id)
+        console.log("tipo:", typeof form.ciudad_id)
         if (!form.nombre.trim()) { mostrarToast("El nombre es requerido"); return }
         if (!form.precio) { mostrarToast("El precio es requerido"); return }
         if (!form.ciudad_id) { mostrarToast("La ciudad es requerida"); return }
@@ -295,11 +298,11 @@ export default function PropiedadesClient({
                     }}
                         onMouseEnter={e => {
                             (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"
-                            ;(e.currentTarget as HTMLElement).style.borderColor = "var(--border2)"
+                                ; (e.currentTarget as HTMLElement).style.borderColor = "var(--border2)"
                         }}
                         onMouseLeave={e => {
                             (e.currentTarget as HTMLElement).style.transform = "none"
-                            ;(e.currentTarget as HTMLElement).style.borderColor = "var(--border)"
+                                ; (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"
                         }}
                     >
                         {/* Imagen */}
@@ -387,11 +390,11 @@ export default function PropiedadesClient({
                                         }}
                                         onMouseEnter={e => {
                                             (e.currentTarget as HTMLElement).style.background = "var(--srb)"
-                                            ;(e.currentTarget as HTMLElement).style.color = "var(--sr)"
+                                                ; (e.currentTarget as HTMLElement).style.color = "var(--sr)"
                                         }}
                                         onMouseLeave={e => {
                                             (e.currentTarget as HTMLElement).style.background = "var(--surface2)"
-                                            ;(e.currentTarget as HTMLElement).style.color = "var(--text2)"
+                                                ; (e.currentTarget as HTMLElement).style.color = "var(--text2)"
                                         }}
                                     >✕</button>
                                 </div>
