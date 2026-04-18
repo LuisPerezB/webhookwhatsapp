@@ -26,6 +26,7 @@ export default async function PropiedadesPage() {
                 proyecto:proyecto_id(id, nombre)
             `)
             .eq("tenant_id", session.tenantId)
+            .is("proyecto_id", null)   
             .is("deleted_at", null)
             .order("created_at", { ascending: false }),
         supabase
