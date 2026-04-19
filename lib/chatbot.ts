@@ -1111,9 +1111,49 @@ export async function handleMessage({
                 propiedadId = state.propiedades_ids[num - 1]
             }
         }
+        if (propiedadId) {
+            return await mostrarDetallePropiedad(propiedadId, session, state, tenant, phoneNumberId, from)
+        }
 
-        if (propiedadId) return await mostrarDetallePropiedad(propiedadId, session, state, tenant, phoneNumberId, from)
-        return "Selecciona una propiedad de la lista."
+        //if (propiedadId) return await mostrarDetallePropiedad(propiedadId, session, state, tenant, phoneNumberId, from)
+        //return "Selecciona una propiedad de la lista."
+
+        // ── NUEVO — texto libre en resultados → NLP interpreta ──
+        if (text.length > 2) {
+            const rawParams = await extraerParametros(text)
+            const params = await validarYEnriquecerParametros(rawParams, tenant.id)
+
+            const tieneParametros = params.tipo_propiedad || params.tipo_operacion ||
+                params.ciudad || params.sector || params.habitaciones_min ||
+                params.precio_max || params.precio_min
+
+            if (tieneParametros && params.confianza >= 0.3) {
+                // Acumular sobre búsqueda actual — mantener ciudad/operación si no cambió
+                const acumulado = {
+                    ...state.params_busqueda,
+                    ...Object.fromEntries(
+                        Object.entries(params).filter(([k, v]) => v !== undefined && k !== "confianza")
+                    )
+                }
+
+                const faltantes = parametrosFaltantes(acumulado)
+
+                if (faltantes.length === 0) {
+                    await updateSession(session.id, { step: "busqueda_texto", params_busqueda: acumulado })
+                    return await confirmarYBuscar(acumulado, session, tenant, cliente, config, phoneNumberId, from)
+                } else {
+                    await updateSession(session.id, {
+                        step: "recolectando_params",
+                        params_busqueda: acumulado,
+                        params_pendientes: faltantes,
+                        param_preguntando: faltantes[0]
+                    })
+                    return preguntarParametro(faltantes[0], acumulado)
+                }
+            }
+        }
+        return "Selecciona una propiedad de la lista, o describe lo que buscas."
+
     }
 
     // ── DETALLE PROPIEDAD ──
