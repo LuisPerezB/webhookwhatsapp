@@ -17,13 +17,13 @@ import {
 type Respuesta = string | { tipo: "buttons" | "list" | "image"; payload: any }
 
 // =========================
-// VALIDAR Y ENRIQUECER — fuera de handleMessage
+// VALIDAR Y ENRIQUECER
 // =========================
 async function validarYEnriquecerParametros(
     params: ParametrosExtraidos,
     tenantId: number
-): Promise<ParametrosExtraidos> {
-    const enriquecido = { ...params }
+): Promise<ParametrosExtraidos & { ambiguo?: { tipo: "sector_multiciudad"; sector: string; ciudades: any[] } }> {
+    const enriquecido: any = { ...params }
 
     if (params.ciudad) {
         const { data: ciudadDB } = await supabase
@@ -33,17 +33,27 @@ async function validarYEnriquecerParametros(
             .maybeSingle()
 
         if (!ciudadDB) {
-            // No es ciudad válida — buscar como sector
-            const { data: sectorDB } = await supabase
+            const { data: sectoresDB } = await supabase
                 .from("sectores")
                 .select("id, nombre, ciudades:ciudad_id(id, nombre)")
                 .ilike("nombre", `%${params.ciudad}%`)
-                .maybeSingle()
 
-            if (sectorDB) {
-                enriquecido.sector = sectorDB.nombre
-                enriquecido.ciudad = (sectorDB.ciudades as any)?.nombre || undefined
-                console.log(`[NLP] "${params.ciudad}" es sector → ciudad: ${enriquecido.ciudad}`)
+            if (sectoresDB?.length === 1) {
+                enriquecido.sector = sectoresDB[0].nombre
+                enriquecido.ciudad = (sectoresDB[0].ciudades as any)?.nombre || undefined
+                console.log(`[NLP] "${params.ciudad}" es sector único → ciudad: ${enriquecido.ciudad}`)
+            } else if (sectoresDB && sectoresDB.length > 1) {
+                enriquecido.sector = sectoresDB[0].nombre
+                enriquecido.ciudad = undefined
+                enriquecido.ambiguo = {
+                    tipo: "sector_multiciudad",
+                    sector: sectoresDB[0].nombre,
+                    ciudades: sectoresDB.map((s: any) => ({
+                        id: (s.ciudades as any)?.id,
+                        nombre: (s.ciudades as any)?.nombre
+                    })).filter(c => c.id)
+                }
+                console.log(`[NLP] "${params.ciudad}" es sector ambiguo en ${sectoresDB.length} ciudades`)
             } else {
                 console.log(`[NLP] "${params.ciudad}" no reconocido`)
                 enriquecido.ciudad = undefined
@@ -51,21 +61,227 @@ async function validarYEnriquecerParametros(
         }
     }
 
-    // Si tiene sector pero no ciudad — derivar ciudad del sector
-    if (enriquecido.sector && !enriquecido.ciudad) {
-        const { data: sectorDB } = await supabase
+    if (enriquecido.sector && !enriquecido.ciudad && !enriquecido.ambiguo) {
+        const { data: sectoresDB } = await supabase
             .from("sectores")
             .select("id, nombre, ciudades:ciudad_id(id, nombre)")
             .ilike("nombre", `%${enriquecido.sector}%`)
-            .maybeSingle()
 
-        if (sectorDB) {
-            enriquecido.ciudad = (sectorDB.ciudades as any)?.nombre || undefined
-            console.log(`[NLP] Sector "${enriquecido.sector}" → ciudad: ${enriquecido.ciudad}`)
+        if (sectoresDB?.length === 1) {
+            enriquecido.ciudad = (sectoresDB[0].ciudades as any)?.nombre || undefined
+        } else if (sectoresDB && sectoresDB.length > 1) {
+            enriquecido.ambiguo = {
+                tipo: "sector_multiciudad",
+                sector: enriquecido.sector,
+                ciudades: sectoresDB.map((s: any) => ({
+                    id: (s.ciudades as any)?.id,
+                    nombre: (s.ciudades as any)?.nombre
+                })).filter(c => c.id)
+            }
         }
     }
 
     return enriquecido
+}
+
+// =========================
+// INTERPRETAR TEXTO LIBRE
+// =========================
+async function interpretarTextoLibre(
+    texto: string,
+    parametro: "ciudad" | "tipo_operacion" | "tipo_propiedad" | "sector",
+    tenantId: number,
+    contexto?: any
+): Promise<{ valor: string | null; ciudad?: string; sector?: string; ambiguo?: any }> {
+
+    const t = texto.toLowerCase().trim()
+
+    if (parametro === "tipo_operacion") {
+        // Exacto
+        if (/^(comprar|compra|venta)$/.test(t)) return { valor: "venta" }
+        if (/^(arrendar|arriendo|alquilar|alquiler|rentar|renta)$/.test(t)) return { valor: "alquiler" }
+        // NLP
+        const params = await extraerParametros(texto)
+        if (params.tipo_operacion) return { valor: params.tipo_operacion }
+        // Regex amplio
+        if (/comprar|comprarla|comprarlo|adquirir/.test(t)) return { valor: "venta" }
+        if (/arrendar|arrendarlo|arrendarla|alquil|rentar/.test(t)) return { valor: "alquiler" }
+        return { valor: null }
+    }
+
+    if (parametro === "tipo_propiedad") {
+        // Exacto
+        const exacto = resolverTipo(t)
+        if (exacto) return { valor: exacto }
+        // NLP
+        const params = await extraerParametros(texto)
+        if (params.tipo_propiedad) return { valor: params.tipo_propiedad }
+        return { valor: null }
+    }
+
+    if (parametro === "ciudad") {
+        // 1. NLP primero
+        const params = await extraerParametros(texto)
+        if (params.ciudad || params.sector) {
+            const enriquecido = await validarYEnriquecerParametros(params, tenantId)
+            if ((enriquecido as any).ambiguo) return {
+                valor: null,
+                ambiguo: (enriquecido as any).ambiguo
+            }
+            if (enriquecido.ciudad) return {
+                valor: enriquecido.ciudad,
+                ciudad: enriquecido.ciudad,
+                sector: enriquecido.sector,
+            }
+        }
+
+        // 2. Fuzzy match contra ciudades
+        const resultado = await buscarCiudadFuzzy(texto, tenantId,
+            contexto?.tipo_operacion, contexto?.tipo_propiedad)
+        if (resultado) return { valor: resultado.nombre, ciudad: resultado.nombre }
+
+        // 3. Buscar como sector
+        const { data: sectoresDB } = await supabase
+            .from("sectores")
+            .select("id, nombre, ciudades:ciudad_id(id, nombre)")
+            .ilike("nombre", `%${texto}%`)
+
+        if (sectoresDB?.length === 1) {
+            const ciudadNombre = (sectoresDB[0].ciudades as any)?.nombre
+            return { valor: ciudadNombre, ciudad: ciudadNombre, sector: sectoresDB[0].nombre }
+        }
+
+        if (sectoresDB && sectoresDB.length > 1) {
+            return {
+                valor: null,
+                ambiguo: {
+                    tipo: "sector_multiciudad",
+                    sector: sectoresDB[0].nombre,
+                    ciudades: sectoresDB.map((s: any) => ({
+                        id: (s.ciudades as any)?.id,
+                        nombre: (s.ciudades as any)?.nombre
+                    })).filter(c => c.id)
+                }
+            }
+        }
+
+        return { valor: null }
+    }
+
+    if (parametro === "sector") {
+        const params = await extraerParametros(texto)
+        if (params.sector) return { valor: params.sector, sector: params.sector }
+
+        if (contexto?.ciudad_id) {
+            const { data } = await supabase
+                .from("sectores")
+                .select("id, nombre")
+                .eq("ciudad_id", contexto.ciudad_id)
+                .ilike("nombre", `%${texto}%`)
+                .limit(1)
+                .maybeSingle()
+            if (data) return { valor: data.nombre, sector: data.nombre }
+        }
+
+        return { valor: null }
+    }
+
+    return { valor: null }
+}
+
+// =========================
+// CONFIRMAR Y BUSCAR
+// =========================
+async function confirmarYBuscar(
+    params: any,
+    session: any,
+    tenant: any,
+    cliente: any,
+    config: any,
+    phoneNumberId: string,
+    from: string
+): Promise<Respuesta> {
+
+    // Si hay ambigüedad — preguntar primero
+    if (params.ambiguo?.tipo === "sector_multiciudad") {
+        await updateSession(session.id, {
+            step: "confirmar_busqueda",
+            params_busqueda: params,
+            ambiguo_ciudades: params.ambiguo.ciudades
+        })
+        return await construirPreguntaCiudadAmbigua(
+            params.ambiguo.sector,
+            params.ambiguo.ciudades
+        )
+    }
+
+    // Nombre del cliente
+    const nombreCliente = cliente.nombres_completos &&
+        cliente.nombres_completos !== "Cliente WhatsApp"
+        ? cliente.nombres_completos.split(" ")[0]
+        : null
+
+    // Construir resumen
+    const partes: string[] = []
+    if (params.tipo_propiedad) partes.push(params.tipo_propiedad)
+    if (params.tipo_operacion === "alquiler") partes.push("en arriendo")
+    else if (params.tipo_operacion === "venta") partes.push("para comprar")
+    if (params.sector) partes.push(`en ${params.sector}`)
+    if (params.ciudad) partes.push(params.ciudad)
+    if (params.habitaciones_min) partes.push(`${params.habitaciones_min}+ hab`)
+    if (params.precio_max) partes.push(`hasta $${Number(params.precio_max).toLocaleString("es-EC")}`)
+    if (params.con_estacionamiento) partes.push("con garaje")
+    if (params.tipo_pago === "biess") partes.push("BIESS")
+
+    const resumen = partes.join(", ")
+    const saludo = nombreCliente ? `Hola ${nombreCliente}! 👋\n\n` : ""
+
+    // Enviar confirmación primero
+    if (phoneNumberId && from) {
+        await sendWhatsAppMessage(
+            phoneNumberId,
+            from,
+            `${saludo}Perfecto, buscando: ${resumen}... 🔍\n\nDame un momento.`
+        )
+    }
+
+    return await buscarYMostrar(params, session, tenant, config)
+}
+
+// =========================
+// CONSTRUIR PREGUNTA CIUDAD AMBIGUA
+// =========================
+async function construirPreguntaCiudadAmbigua(
+    sector: string,
+    ciudades: { id: number; nombre: string }[]
+): Promise<Respuesta> {
+    if (ciudades.length <= 3) {
+        return {
+            tipo: "buttons",
+            payload: {
+                body: `El sector ${sector} existe en varias ciudades. En cuál buscas?`,
+                buttons: ciudades.slice(0, 3).map(c => ({
+                    id: `ciudad_confirm_${c.id}`,
+                    title: c.nombre
+                }))
+            }
+        }
+    }
+
+    return {
+        tipo: "list",
+        payload: {
+            body: `El sector ${sector} existe en varias ciudades. En cuál buscas?`,
+            buttonText: "Ver ciudades",
+            sections: [{
+                title: "Ciudades",
+                rows: ciudades.slice(0, 9).map(c => ({
+                    id: `ciudad_confirm_${c.id}`,
+                    title: c.nombre
+                }))
+            }]
+        }
+    }
 }
 
 // =========================
@@ -180,7 +396,6 @@ async function buscarYMostrar(
 ): Promise<Respuesta> {
     const tenantId = tenant.id
 
-    // 1. Buscar propiedades
     const { data: propiedades } = await supabase.rpc("buscar_propiedades", {
         p_tenant_id: tenantId,
         p_tipo_propiedad: params.tipo_propiedad || null,
@@ -204,7 +419,6 @@ async function buscarYMostrar(
         p_sector: params.sector || null,
     })
 
-    // 2. Buscar proyectos
     let queryProyectos = supabase
         .from("proyectos")
         .select(`id, nombre, precio_desde, precio_hasta, tipo_pago, ciudad:ciudad_id(nombre), sector:sector_id(nombre)`)
@@ -225,7 +439,6 @@ async function buscarYMostrar(
 
     const { data: proyectos } = await queryProyectos.limit(3)
 
-    // 3. Fallback — solo ciudad + tipo + operación sin filtros extra
     let propsFallback: any[] = []
     let esFallback = false
 
@@ -251,12 +464,8 @@ async function buscarYMostrar(
     const propsAMostrar = propiedades?.length ? propiedades : propsFallback
     const totalResultados = propsAMostrar.length + (proyectos?.length || 0)
 
-    // 4. Sin resultados
     if (totalResultados === 0) {
-        await updateSession(session.id, {
-            step: "sin_resultados",
-            params_busqueda: params
-        })
+        await updateSession(session.id, { step: "sin_resultados", params_busqueda: params })
         return {
             tipo: "buttons",
             payload: {
@@ -270,24 +479,20 @@ async function buscarYMostrar(
         }
     }
 
-    // 5. Guardar en sesión — limpiar estado anterior
     await updateSession(session.id, {
         step: "mostrar_resultados",
         params_busqueda: params,
         propiedades_ids: propsAMostrar.map((p: any) => p.id),
         pagina: 0,
         es_fallback: esFallback,
-        // Limpiar estado de búsqueda anterior
         propiedad_id: null,
         proyecto_id: null,
         horarios_ids: null,
     })
 
-    // 6. Construir encabezado
     const resumen = [
         params.tipo_propiedad,
-        params.tipo_operacion === "alquiler" ? "en arriendo"
-            : params.tipo_operacion === "venta" ? "en venta" : null,
+        params.tipo_operacion === "alquiler" ? "en arriendo" : params.tipo_operacion === "venta" ? "en venta" : null,
         params.ciudad ? `en ${params.ciudad}` : null,
         params.sector ? `sector ${params.sector}` : null,
         params.habitaciones_min ? `${params.habitaciones_min}+ hab` : null,
@@ -300,7 +505,6 @@ async function buscarYMostrar(
         ? `No encontre con esas caracteristicas exactas. Te muestro opciones similares en ${params.ciudad}:`
         : `${totalResultados} resultado(s) — ${resumen}:`
 
-    // 7. Rows
     const POR_PAGINA = 5
     const pagina0 = propsAMostrar.slice(0, POR_PAGINA)
 
@@ -371,7 +575,6 @@ export async function handleMessage({
         return await listarCitasCliente(cliente.id, tenant.id)
     }
 
-    // Comando "buscar diferente" — limpiar todo y empezar búsqueda nueva
     if (btnId === "buscar_nuevo" || text === "buscar diferente" || text === "nueva busqueda") {
         await updateSession(session.id, { step: "busqueda_texto", params_busqueda: {} })
         return "Que estas buscando?\n\nDescribelo directamente:\n\nEj: casa grande en Guayaquil para comprar\nEj: depa en Quito hasta 800 dolares\nEj: terreno en Samborondon con BIESS"
@@ -387,7 +590,6 @@ export async function handleMessage({
             }
             return await mostrarHorariosPropiedad(propId, config?.dias_max_cita ?? 7, session.id, state)
         }
-
         if (btnId.startsWith("reservar_proy_")) {
             const proyId = parseInt(btnId.replace("reservar_proy_", ""))
             if (!cliente.verificado) {
@@ -396,17 +598,13 @@ export async function handleMessage({
             }
             return await mostrarHorariosProyecto(proyId, config?.dias_max_cita ?? 7, session.id, state)
         }
-
         if (btnId.startsWith("ver_unidades_")) {
             const proyId = parseInt(btnId.replace("ver_unidades_", ""))
             await updateSession(session.id, { step: "ver_unidades_proyecto", proyecto_id: proyId })
             return await listarUnidadesProyecto(proyId)
         }
-
         if (btnId.startsWith("ver_web_")) {
-            const slug = btnId
-                .replace("ver_web_prop_", "propiedad-")
-                .replace("ver_web_proy_", "proyecto-")
+            const slug = btnId.replace("ver_web_prop_", "propiedad-").replace("ver_web_proy_", "proyecto-")
             const appUrl = process.env.NEXT_PUBLIC_APP_URL || ""
             return `Ver detalles, fotos y ubicacion:\n${appUrl}/p/${slug}`
         }
@@ -429,8 +627,20 @@ export async function handleMessage({
 
                 if (faltantes.length === 0) {
                     await updateSession(session.id, { step: "busqueda_texto", params_busqueda: params })
-                    return await buscarYMostrar(params, session, tenant, config)
+                    return await confirmarYBuscar(params, session, tenant, cliente, config, phoneNumberId, from)
                 } else {
+                    // Si hay ambigüedad — resolver antes de preguntar por faltantes
+                    if ((params as any).ambiguo) {
+                        await updateSession(session.id, {
+                            step: "confirmar_busqueda",
+                            params_busqueda: params,
+                            ambiguo_ciudades: (params as any).ambiguo.ciudades
+                        })
+                        return await construirPreguntaCiudadAmbigua(
+                            (params as any).ambiguo.sector,
+                            (params as any).ambiguo.ciudades
+                        )
+                    }
                     await updateSession(session.id, {
                         step: "recolectando_params",
                         params_busqueda: params,
@@ -457,30 +667,40 @@ export async function handleMessage({
             await updateSession(session.id, { step: "busqueda_texto", params_busqueda: {} })
             return "Que estas buscando?\n\nDescribelo directamente:\n\nEj: casa grande en Guayaquil para comprar\nEj: depa en Quito hasta 800 dolares\nEj: terreno con BIESS en Samborondon"
         }
-
         if (btnId === "btn_proyectos" || text === "2" || text.includes("proyecto")) {
             await updateSession(session.id, { step: "ver_proyectos" })
             return await listarProyectos(tenant.id)
         }
-
         if (btnId === "btn_asesor" || text === "4" || text.includes("asesor")) {
             await activarModoManual(session, tenant, cliente)
             const tiempoManual = config?.tiempo_manual_min ?? 15
             return `Un agente te atendera en breve. ⏳\n\nEn ${tiempoManual} minutos el asistente se reactivara automaticamente.`
         }
 
-        // Si en el menú principal escribe algo de búsqueda — ir directo al NLP
+        // Texto libre en menú — intentar NLP
         if (text.length > 3) {
             const rawParams = await extraerParametros(text)
             const params = await validarYEnriquecerParametros(rawParams, tenant.id)
-            const tieneParametros = params.tipo_propiedad || params.ciudad || params.tipo_operacion
+            const tieneParametros = params.tipo_propiedad || params.ciudad || params.tipo_operacion ||
+                params.sector || params.habitaciones_min
 
             if (tieneParametros && params.confianza >= 0.3) {
                 const faltantes = parametrosFaltantes(params)
                 if (faltantes.length === 0) {
                     await updateSession(session.id, { step: "busqueda_texto", params_busqueda: params })
-                    return await buscarYMostrar(params, session, tenant, config)
+                    return await confirmarYBuscar(params, session, tenant, cliente, config, phoneNumberId, from)
                 } else {
+                    if ((params as any).ambiguo) {
+                        await updateSession(session.id, {
+                            step: "confirmar_busqueda",
+                            params_busqueda: params,
+                            ambiguo_ciudades: (params as any).ambiguo.ciudades
+                        })
+                        return await construirPreguntaCiudadAmbigua(
+                            (params as any).ambiguo.sector,
+                            (params as any).ambiguo.ciudades
+                        )
+                    }
                     await updateSession(session.id, {
                         step: "recolectando_params",
                         params_busqueda: params,
@@ -495,18 +715,62 @@ export async function handleMessage({
         return await menuPrincipal(tenant, cliente, config)
     }
 
+    // ── CONFIRMAR BUSQUEDA — resolver ambigüedad de ciudad ──
+    if (state.step === "confirmar_busqueda") {
+        if (btnId.startsWith("ciudad_confirm_")) {
+            const ciudadId = parseInt(btnId.replace("ciudad_confirm_", ""))
+            const { data: ciudadDB } = await supabase
+                .from("ciudades").select("nombre").eq("id", ciudadId).single()
+
+            if (ciudadDB) {
+                const newParams = { ...state.params_busqueda, ciudad: ciudadDB.nombre }
+                await updateSession(session.id, { step: "busqueda_texto", params_busqueda: newParams })
+                return await confirmarYBuscar(newParams, session, tenant, cliente, config, phoneNumberId, from)
+            }
+        }
+
+        if (text) {
+            const resultado = await interpretarTextoLibre(text, "ciudad", tenant.id)
+            if (resultado.ambiguo) {
+                return await construirPreguntaCiudadAmbigua(resultado.ambiguo.sector, resultado.ambiguo.ciudades)
+            }
+            if (resultado.valor) {
+                const newParams = { ...state.params_busqueda, ciudad: resultado.valor, sector: resultado.sector }
+                await updateSession(session.id, { step: "busqueda_texto", params_busqueda: newParams })
+                return await confirmarYBuscar(newParams, session, tenant, cliente, config, phoneNumberId, from)
+            }
+        }
+
+        return await construirPreguntaCiudadAmbigua(
+            state.params_busqueda?.sector || "ese sector",
+            state.ambiguo_ciudades || []
+        )
+    }
+
     // ── BUSQUEDA POR TEXTO ──
     if (state.step === "busqueda_texto") {
         const rawParams = await extraerParametros(text)
         const params = await validarYEnriquecerParametros(rawParams, tenant.id)
 
-        // Acumular con lo que ya teníamos
         const acumulado = { ...state.params_busqueda }
         Object.entries(params).forEach(([k, v]) => {
             if (v !== undefined && k !== "confianza") {
                 (acumulado as any)[k] = v
             }
         })
+
+        // Manejar ambigüedad
+        if ((params as any).ambiguo && !acumulado.ciudad) {
+            await updateSession(session.id, {
+                step: "confirmar_busqueda",
+                params_busqueda: acumulado,
+                ambiguo_ciudades: (params as any).ambiguo.ciudades
+            })
+            return await construirPreguntaCiudadAmbigua(
+                (params as any).ambiguo.sector,
+                (params as any).ambiguo.ciudades
+            )
+        }
 
         const faltantes = parametrosFaltantes(acumulado)
 
@@ -521,7 +785,7 @@ export async function handleMessage({
             return preguntarParametro(faltantes[0], acumulado)
         }
 
-        return await buscarYMostrar(acumulado, session, tenant, config)
+        return await confirmarYBuscar(acumulado, session, tenant, cliente, config, phoneNumberId, from)
     }
 
     // ── RECOLECTANDO PARÁMETROS ──
@@ -535,73 +799,59 @@ export async function handleMessage({
             acumulado.tipo_operacion = "alquiler"
         } else if (btnId.startsWith("tipo_")) {
             acumulado.tipo_propiedad = btnId.replace("tipo_", "")
+        } else if (btnId.startsWith("ciudad_confirm_")) {
+            const ciudadId = parseInt(btnId.replace("ciudad_confirm_", ""))
+            const { data: c } = await supabase.from("ciudades").select("nombre").eq("id", ciudadId).single()
+            if (c) acumulado.ciudad = c.nombre
         } else {
-            // Texto libre — NLP + validación
-            const rawParams = await extraerParametros(text)
-            const params = await validarYEnriquecerParametros(rawParams, tenant.id)
+            // Texto libre — usar interpretarTextoLibre
+            const resultado = await interpretarTextoLibre(text, paramActual, tenant.id, acumulado)
 
-            if (paramActual === "ciudad") {
-                if (params.ciudad) {
-                    acumulado.ciudad = params.ciudad
-                    if (params.sector) acumulado.sector = params.sector
-                } else {
-                    // Fuzzy match contra ciudades
-                    const resultado = await buscarCiudadFuzzy(text, tenant.id)
-                    if (resultado) {
-                        acumulado.ciudad = resultado.nombre
-                    } else {
-                        // Intentar como sector
-                        const { data: sectorDB } = await supabase
-                            .from("sectores")
-                            .select("id, nombre, ciudades:ciudad_id(id, nombre)")
-                            .ilike("nombre", `%${text}%`)
-                            .maybeSingle()
-
-                        if (sectorDB) {
-                            acumulado.sector = sectorDB.nombre
-                            acumulado.ciudad = (sectorDB.ciudades as any)?.nombre
-                        } else {
-                            return "No reconoci esa ciudad o sector. Escribe el nombre completo (ej: Guayaquil, Norte de Guayaquil, Urdesa):"
-                        }
-                    }
-                }
-            } else if (paramActual === "tipo_propiedad") {
-                if (params.tipo_propiedad) {
-                    acumulado.tipo_propiedad = params.tipo_propiedad
-                } else {
-                    return await listaTipoPropiedad()
-                }
-            } else if (paramActual === "tipo_operacion") {
-                if (params.tipo_operacion) {
-                    acumulado.tipo_operacion = params.tipo_operacion
-                } else {
-                    const t = text.toLowerCase()
-                    if (/comprar|compra|comprarla|comprarlo|adquirir|venta/.test(t)) {
-                        acumulado.tipo_operacion = "venta"
-                    } else if (/arrendar|arriendo|alquil|rentar|renta|arrendarlo/.test(t)) {
-                        acumulado.tipo_operacion = "alquiler"
-                    } else {
-                        await updateSession(session.id, { ...state, params_busqueda: acumulado })
-                        return {
-                            tipo: "buttons",
-                            payload: {
-                                body: "Buscas comprar o arrendar?",
-                                buttons: [
-                                    { id: "op_comprar", title: "Comprar" },
-                                    { id: "op_arrendar", title: "Arrendar" },
-                                ]
-                            }
-                        }
-                    }
-                }
+            if (resultado.ambiguo) {
+                await updateSession(session.id, {
+                    step: "confirmar_busqueda",
+                    params_busqueda: { ...acumulado, sector: resultado.ambiguo.sector },
+                    ambiguo_ciudades: resultado.ambiguo.ciudades
+                })
+                return await construirPreguntaCiudadAmbigua(
+                    resultado.ambiguo.sector,
+                    resultado.ambiguo.ciudades
+                )
             }
 
-            // Aprovechar otros params extraídos
-            Object.entries(params).forEach(([k, v]) => {
-                if (v !== undefined && k !== "confianza" && !(k in acumulado)) {
-                    (acumulado as any)[k] = v
+            if (resultado.valor) {
+                acumulado[paramActual] = resultado.valor
+                if (resultado.sector) acumulado.sector = resultado.sector
+                if (resultado.ciudad && paramActual === "ciudad") acumulado.ciudad = resultado.ciudad
+            } else {
+                // NLP y fuzzy fallaron — respuesta según parámetro
+                if (paramActual === "tipo_propiedad") return await listaTipoPropiedad()
+                if (paramActual === "tipo_operacion") {
+                    await updateSession(session.id, { ...state, params_busqueda: acumulado })
+                    return {
+                        tipo: "buttons",
+                        payload: {
+                            body: "Buscas comprar o arrendar?",
+                            buttons: [
+                                { id: "op_comprar", title: "Comprar" },
+                                { id: "op_arrendar", title: "Arrendar" },
+                            ]
+                        }
+                    }
                 }
-            })
+                await updateSession(session.id, { ...state, params_busqueda: acumulado })
+                return `No reconoci esa ${paramActual === "ciudad" ? "ciudad o sector" : paramActual}. Escribe el nombre completo:\n\nEj: Guayaquil, Norte de Guayaquil, Urdesa, Cumbayá`
+            }
+
+            // Aprovechar otros params del NLP
+            try {
+                const extraParams = await extraerParametros(text)
+                Object.entries(extraParams).forEach(([k, v]) => {
+                    if (v !== undefined && k !== "confianza" && !(k in acumulado)) {
+                        (acumulado as any)[k] = v
+                    }
+                })
+            } catch {}
         }
 
         const pendientes = parametrosFaltantes(acumulado)
@@ -617,10 +867,10 @@ export async function handleMessage({
             return preguntarParametro(siguienteFaltante, acumulado)
         }
 
-        return await buscarYMostrar(acumulado, session, tenant, config)
+        return await confirmarYBuscar(acumulado, session, tenant, cliente, config, phoneNumberId, from)
     }
 
-    // ── FILTRO TIPO (flujo manual legacy) ──
+    // ── FILTRO TIPO (legacy) ──
     if (state.step === "filtro_tipo") {
         const tipo = resolverTipo(btnId || text)
         if (!tipo) return await listaTipoPropiedad()
@@ -677,11 +927,29 @@ export async function handleMessage({
             const { data: c } = await supabase.from("ciudades").select("nombre").eq("id", ciudadId).single()
             ciudadNombre = c?.nombre || ""
         } else if (text) {
-            const resultado = await buscarCiudadFuzzy(text, tenant.id, state.operacion, state.tipo)
-            if (resultado) { ciudadId = resultado.id; ciudadNombre = resultado.nombre }
+            const resultado = await interpretarTextoLibre(text, "ciudad", tenant.id, {
+                tipo_operacion: state.operacion,
+                tipo_propiedad: state.tipo
+            })
+
+            if (resultado.ambiguo) {
+                await updateSession(session.id, {
+                    ...state,
+                    step: "confirmar_busqueda",
+                    params_busqueda: state,
+                    ambiguo_ciudades: resultado.ambiguo.ciudades
+                })
+                return await construirPreguntaCiudadAmbigua(resultado.ambiguo.sector, resultado.ambiguo.ciudades)
+            }
+
+            if (resultado.ciudad) {
+                const { data: c } = await supabase
+                    .from("ciudades").select("id, nombre").ilike("nombre", resultado.ciudad).single()
+                if (c) { ciudadId = c.id; ciudadNombre = c.nombre }
+            }
         }
 
-        if (!ciudadId) return "No encontre esa ciudad. Escribe el nombre nuevamente:"
+        if (!ciudadId) return "No encontre esa ciudad o sector. Escribe el nombre completo:"
 
         await updateSession(session.id, { ...state, step: "filtro_sector", ciudad_id: ciudadId, ciudad_nombre: ciudadNombre })
         return await listaSectores(ciudadId, ciudadNombre)
@@ -689,10 +957,30 @@ export async function handleMessage({
 
     // ── FILTRO CIUDAD TEXTO ──
     if (state.step === "filtro_ciudad_texto") {
-        const resultado = await buscarCiudadFuzzy(text, tenant.id, state.operacion, state.tipo)
-        if (!resultado) return "No encontre esa ciudad. Intenta de nuevo:"
-        await updateSession(session.id, { ...state, step: "filtro_sector", ciudad_id: resultado.id, ciudad_nombre: resultado.nombre })
-        return await listaSectores(resultado.id, resultado.nombre)
+        const resultado = await interpretarTextoLibre(text, "ciudad", tenant.id, {
+            tipo_operacion: state.operacion,
+            tipo_propiedad: state.tipo
+        })
+
+        if (resultado.ambiguo) {
+            await updateSession(session.id, {
+                ...state,
+                step: "confirmar_busqueda",
+                ambiguo_ciudades: resultado.ambiguo.ciudades
+            })
+            return await construirPreguntaCiudadAmbigua(resultado.ambiguo.sector, resultado.ambiguo.ciudades)
+        }
+
+        if (resultado.ciudad) {
+            const { data: c } = await supabase
+                .from("ciudades").select("id, nombre").ilike("nombre", resultado.ciudad).single()
+            if (c) {
+                await updateSession(session.id, { ...state, step: "filtro_sector", ciudad_id: c.id, ciudad_nombre: c.nombre })
+                return await listaSectores(c.id, c.nombre)
+            }
+        }
+
+        return "No encontre esa ciudad. Intenta de nuevo:"
     }
 
     // ── FILTRO SECTOR ──
@@ -707,14 +995,18 @@ export async function handleMessage({
             const { data: s } = await supabase.from("sectores").select("nombre").eq("id", sectorId).single()
             sectorNombre = s?.nombre || ""
         } else if (text) {
-            const { data: s } = await supabase
-                .from("sectores")
-                .select("id, nombre")
-                .eq("ciudad_id", state.ciudad_id)
-                .ilike("nombre", `%${text}%`)
-                .limit(1)
-                .maybeSingle()
-            if (s) { sectorId = s.id; sectorNombre = s.nombre }
+            const resultado = await interpretarTextoLibre(text, "sector", tenant.id, {
+                ciudad_id: state.ciudad_id
+            })
+            if (resultado.sector) {
+                const { data: s } = await supabase
+                    .from("sectores")
+                    .select("id, nombre")
+                    .eq("ciudad_id", state.ciudad_id)
+                    .ilike("nombre", `%${resultado.sector}%`)
+                    .limit(1).maybeSingle()
+                if (s) { sectorId = s.id; sectorNombre = s.nombre }
+            }
         }
 
         const params = {
@@ -751,13 +1043,11 @@ export async function handleMessage({
             return await formatearResultados(resultados, session.id, { ...state, pagina })
         }
 
-        // Selección de proyecto
         if (btnId.startsWith("proyecto_")) {
             const proyId = parseInt(btnId.replace("proyecto_", ""))
             return await mostrarDetalleProyecto(proyId, session, state, tenant, phoneNumberId, from)
         }
 
-        // Selección de propiedad
         let propiedadId: number | null = null
         if (btnId.startsWith("prop_")) {
             propiedadId = parseInt(btnId.replace("prop_", ""))
@@ -768,10 +1058,7 @@ export async function handleMessage({
             }
         }
 
-        if (propiedadId) {
-            return await mostrarDetallePropiedad(propiedadId, session, state, tenant, phoneNumberId, from)
-        }
-
+        if (propiedadId) return await mostrarDetallePropiedad(propiedadId, session, state, tenant, phoneNumberId, from)
         return "Selecciona una propiedad de la lista."
     }
 
@@ -785,7 +1072,6 @@ export async function handleMessage({
             }
             return await mostrarHorariosPropiedad(propId, config?.dias_max_cita ?? 7, session.id, state)
         }
-
         if (btnId === "btn_volver" || text === "0") {
             await updateSession(session.id, { ...state, step: "mostrar_resultados" })
             return "Que otra propiedad te interesa?"
@@ -795,16 +1081,12 @@ export async function handleMessage({
     // ── VER PROYECTOS ──
     if (state.step === "ver_proyectos") {
         let proyId: number | null = null
-
         if (btnId.startsWith("proy_")) {
             proyId = parseInt(btnId.replace("proy_", ""))
         } else {
             const num = parseInt(text)
-            if (!isNaN(num) && state.proyectos_ids?.[num - 1]) {
-                proyId = state.proyectos_ids[num - 1]
-            }
+            if (!isNaN(num) && state.proyectos_ids?.[num - 1]) proyId = state.proyectos_ids[num - 1]
         }
-
         if (proyId) return await mostrarDetalleProyecto(proyId, session, state, tenant, phoneNumberId, from)
         return await listarProyectos(tenant.id)
     }
@@ -816,7 +1098,6 @@ export async function handleMessage({
             await updateSession(session.id, { ...state, step: "ver_unidades_proyecto", proyecto_id: proyId })
             return await listarUnidadesProyecto(proyId)
         }
-
         if (btnId.startsWith("reservar_proy_")) {
             const proyId = parseInt(btnId.replace("reservar_proy_", ""))
             if (!cliente.verificado) {
@@ -825,7 +1106,6 @@ export async function handleMessage({
             }
             return await mostrarHorariosProyecto(proyId, config?.dias_max_cita ?? 7, session.id, state)
         }
-
         if (btnId === "btn_volver" || text === "0") {
             await updateSession(session.id, { step: "ver_proyectos" })
             return await listarProyectos(tenant.id)
@@ -838,11 +1118,9 @@ export async function handleMessage({
             const propiedadId = parseInt(btnId.replace("prop_", ""))
             return await mostrarDetallePropiedad(propiedadId, session, state, tenant, phoneNumberId, from)
         }
-
         if (btnId === "btn_volver" || text === "0") {
             return await mostrarDetalleProyecto(state.proyecto_id, session, state, tenant, phoneNumberId, from)
         }
-
         return await listarUnidadesProyecto(state.proyecto_id)
     }
 
@@ -851,7 +1129,7 @@ export async function handleMessage({
         const intentos = (state.intentos_fecha || 0) + 1
         const maxIntentos = 3
         const fechaRef = new Date().toISOString().split("T")[0]
-        const { fecha, hora, confianza } = await extraerFechaHora(text, fechaRef)
+        const { fecha, hora } = await extraerFechaHora(text, fechaRef)
 
         if (!fecha && !hora) {
             if (intentos >= maxIntentos) {
@@ -916,9 +1194,7 @@ export async function handleMessage({
             horarioId = parseInt(btnId.replace("horario_", ""))
         } else {
             const num = parseInt(text)
-            if (!isNaN(num) && state.horarios_ids?.[num - 1]) {
-                horarioId = state.horarios_ids[num - 1]
-            }
+            if (!isNaN(num) && state.horarios_ids?.[num - 1]) horarioId = state.horarios_ids[num - 1]
         }
 
         if (!horarioId) {
@@ -997,11 +1273,7 @@ export async function handleMessage({
         }
 
         const { data: cedulaExistente } = await supabase
-            .from("clientes")
-            .select("id, celular")
-            .eq("ruc_ci", cedula)
-            .neq("id", cliente.id)
-            .maybeSingle()
+            .from("clientes").select("id, celular").eq("ruc_ci", cedula).neq("id", cliente.id).maybeSingle()
 
         if (cedulaExistente) {
             await supabase.from("clientes").update({ celular_alternativo: from }).eq("id", cedulaExistente.id)
@@ -1025,9 +1297,7 @@ export async function handleMessage({
         const newState = { ...state, step: paso, intentos_cedula: 0 }
         await updateSession(session.id, newState)
 
-        if (phoneNumberId && from) {
-            await sendWhatsAppMessage(phoneNumberId, from, saludoMsg)
-        }
+        if (phoneNumberId && from) await sendWhatsAppMessage(phoneNumberId, from, saludoMsg)
 
         if (state.propiedad_id) {
             return await mostrarHorariosPropiedad(state.propiedad_id, config?.dias_max_cita ?? 7, session.id, newState)
@@ -1038,7 +1308,7 @@ export async function handleMessage({
 
     // ── SIN RESULTADOS ──
     if (state.step === "sin_resultados") {
-        if (btnId === "buscar_otro_sector" || btnId === "btn_filtros" || btnId === "buscar_nuevo" || text === "1") {
+        if (btnId === "buscar_otro_sector" || btnId === "buscar_nuevo" || text === "1") {
             await updateSession(session.id, { step: "busqueda_texto", params_busqueda: {} })
             return "Que estas buscando? Describelo nuevamente:"
         }
@@ -1109,12 +1379,8 @@ async function activarModoManual(session: any, tenant: any, cliente: any) {
 }
 
 async function mostrarDetallePropiedad(
-    propiedadId: number,
-    session: any,
-    state: any,
-    tenant: any,
-    phoneNumberId: string,
-    from: string
+    propiedadId: number, session: any, state: any,
+    tenant: any, phoneNumberId: string, from: string
 ): Promise<Respuesta> {
     const { data: prop } = await supabase
         .from("propiedades")
@@ -1126,20 +1392,14 @@ async function mostrarDetallePropiedad(
     if (!prop) return "Propiedad no encontrada."
 
     await Promise.all([
-        supabase.from("propiedades")
-            .update({ total_consultas: (prop.total_consultas || 0) + 1 })
-            .eq("id", propiedadId),
-        updateSession(session.id, {
-            ...state, step: "detalle_propiedad", propiedad_id: propiedadId
-        })
+        supabase.from("propiedades").update({ total_consultas: (prop.total_consultas || 0) + 1 }).eq("id", propiedadId),
+        updateSession(session.id, { ...state, step: "detalle_propiedad", propiedad_id: propiedadId })
     ])
 
     const fotos = prop.fotos as any[]
     if (fotos?.length > 0) {
         const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
-        if (url && phoneNumberId && from) {
-            await sendWhatsAppImage(phoneNumberId, from, url, prop.nombre).catch(() => { })
-        }
+        if (url && phoneNumberId && from) await sendWhatsAppImage(phoneNumberId, from, url, prop.nombre).catch(() => { })
     }
 
     const ciudadNombre = (prop.ciudad as any)?.nombre || ""
@@ -1162,12 +1422,8 @@ async function mostrarDetallePropiedad(
 }
 
 async function mostrarDetalleProyecto(
-    proyectoId: number,
-    session: any,
-    state: any,
-    tenant: any,
-    phoneNumberId: string,
-    from: string
+    proyectoId: number, session: any, state: any,
+    tenant: any, phoneNumberId: string, from: string
 ): Promise<Respuesta> {
     const { data: proy } = await supabase
         .from("proyectos")
@@ -1179,20 +1435,14 @@ async function mostrarDetalleProyecto(
     if (!proy) return await listarProyectos(tenant.id) as Respuesta
 
     await Promise.all([
-        supabase.from("proyectos")
-            .update({ total_consultas: (proy.total_consultas || 0) + 1 })
-            .eq("id", proyectoId),
-        updateSession(session.id, {
-            ...state, step: "detalle_proyecto", proyecto_id: proyectoId
-        })
+        supabase.from("proyectos").update({ total_consultas: (proy.total_consultas || 0) + 1 }).eq("id", proyectoId),
+        updateSession(session.id, { ...state, step: "detalle_proyecto", proyecto_id: proyectoId })
     ])
 
     const fotos = proy.fotos as any[]
     if (fotos?.length > 0) {
         const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
-        if (url && phoneNumberId && from) {
-            await sendWhatsAppImage(phoneNumberId, from, url, proy.nombre).catch(() => { })
-        }
+        if (url && phoneNumberId && from) await sendWhatsAppImage(phoneNumberId, from, url, proy.nombre).catch(() => { })
     }
 
     const ciudadNombre = (proy.ciudad as any)?.nombre || ""
@@ -1213,10 +1463,8 @@ async function mostrarDetalleProyecto(
 }
 
 async function buscarCiudadFuzzy(
-    texto: string,
-    tenantId?: number,
-    tipoOperacion?: string,
-    tipoPropiedad?: string
+    texto: string, tenantId?: number,
+    tipoOperacion?: string, tipoPropiedad?: string
 ): Promise<{ id: number; nombre: string } | null> {
     let ciudades: any[] = []
 
@@ -1270,7 +1518,12 @@ async function menuPrincipal(tenant: any, cliente: any, config: any): Promise<Re
         .limit(1)
         .maybeSingle()
 
-    let bodyText = saludo
+    // Saludo personalizado
+    const nombreCliente = cliente.nombres_completos &&
+        cliente.nombres_completos !== "Cliente WhatsApp"
+        ? ` ${cliente.nombres_completos.split(" ")[0]}` : ""
+
+    let bodyText = saludo.replace("Bienvenido", `Bienvenido${nombreCliente}`)
 
     if (reservaVigente) {
         const prop = reservaVigente.propiedades as any
@@ -1308,7 +1561,6 @@ async function listarProyectos(tenantId: number, ciudadId?: number): Promise<Res
         .limit(10)
 
     if (ciudadId) query = query.eq("ciudad_id", ciudadId)
-
     const { data } = await query
 
     if (!data?.length) {
@@ -1364,11 +1616,7 @@ async function listarUnidadesProyecto(proyectoId: number): Promise<Respuesta> {
                 rows: data.map(p => {
                     const hab = (p.ambientes as any)?.habitaciones
                     const m2 = (p.dimensiones as any)?.m2_construccion || (p.dimensiones as any)?.m2_total
-                    const extra = [
-                        hab ? `${hab} hab` : null,
-                        m2 ? `${m2}m2` : null,
-                        `$${Number(p.precio).toLocaleString("es-EC")}`
-                    ].filter(Boolean).join(" · ")
+                    const extra = [hab ? `${hab} hab` : null, m2 ? `${m2}m2` : null, `$${Number(p.precio).toLocaleString("es-EC")}`].filter(Boolean).join(" · ")
                     return rowPropiedad(p.nombre, "", "", extra, `prop_${p.id}`)
                 })
             }]
@@ -1409,7 +1657,6 @@ async function listaCiudades(tenantId: number, tipoOperacion?: string, tipoPropi
     if (tipoPropiedad) query = query.eq("tipo_propiedad", tipoPropiedad)
 
     const { data } = await query
-
     if (!data?.length) return "Escribe el nombre de la ciudad donde buscas:"
 
     const ciudadesVistas = new Set<number>()
@@ -1427,14 +1674,9 @@ async function listaCiudades(tenantId: number, tipoOperacion?: string, tipoPropi
     if (!ciudadesUnicas.length) return "Escribe el nombre de la ciudad donde buscas:"
 
     const rows: any[] = ciudadesUnicas.slice(0, 9).map(c => ({
-        id: `ciudad_${c.id}`,
-        title: c.nombre,
-        description: c.provincia?.nombre || ""
+        id: `ciudad_${c.id}`, title: c.nombre, description: c.provincia?.nombre || ""
     }))
-
-    if (ciudadesUnicas.length > 9) {
-        rows.push({ id: "ciudad_otra", title: "Otra ciudad", description: "Escribe el nombre a continuacion" })
-    }
+    if (ciudadesUnicas.length > 9) rows.push({ id: "ciudad_otra", title: "Otra ciudad", description: "Escribe el nombre a continuacion" })
 
     return {
         tipo: "list",
@@ -1448,12 +1690,8 @@ async function listaCiudades(tenantId: number, tipoOperacion?: string, tipoPropi
 
 async function listaSectores(ciudadId: number, ciudadNombre: string): Promise<Respuesta> {
     const { data } = await supabase
-        .from("sectores")
-        .select("id, nombre")
-        .eq("ciudad_id", ciudadId)
-        .is("deleted_at", null)
-        .order("nombre")
-        .limit(9)
+        .from("sectores").select("id, nombre").eq("ciudad_id", ciudadId)
+        .is("deleted_at", null).order("nombre").limit(9)
 
     const rows: any[] = [{ id: "sector_todos", title: "Todos los sectores" }]
     if (data?.length) rows.push(...data.map(s => ({ id: `sector_${s.id}`, title: s.nombre })))
@@ -1469,14 +1707,8 @@ async function listaSectores(ciudadId: number, ciudadNombre: string): Promise<Re
 }
 
 async function buscarPropiedades(params: {
-    tenantId: number
-    tipo_operacion?: string
-    tipo_propiedad?: string
-    ciudad_id?: number
-    sector_id?: number
-    precio_min?: number
-    precio_max?: number
-    habitaciones?: number
+    tenantId: number; tipo_operacion?: string; tipo_propiedad?: string;
+    ciudad_id?: number; sector_id?: number; precio_min?: number; precio_max?: number; habitaciones?: number
 }): Promise<any[]> {
     const { data } = await supabase.rpc("buscar_propiedades", {
         p_tenant_id: params.tenantId,
@@ -1520,17 +1752,9 @@ async function formatearResultados(propiedades: any[], sessionId: number, state:
     const total = propiedades.length
     const totalPaginas = Math.ceil(total / ITEMS_POR_PAGINA)
 
-    await updateSession(sessionId, {
-        ...state,
-        step: "mostrar_resultados",
-        propiedades_ids: propiedades.map(p => p.id),
-        pagina,
-    })
+    await updateSession(sessionId, { ...state, step: "mostrar_resultados", propiedades_ids: propiedades.map(p => p.id), pagina })
 
-    const rows = pagActual.map(p => rowPropiedad(
-        p.nombre, p.ciudad_nombre || "", p.sector_nombre || "",
-        `$${Number(p.precio).toLocaleString("es-EC")}`, `prop_${p.id}`
-    ))
+    const rows = pagActual.map(p => rowPropiedad(p.nombre, p.ciudad_nombre || "", p.sector_nombre || "", `$${Number(p.precio).toLocaleString("es-EC")}`, `prop_${p.id}`))
 
     const navRows: any[] = []
     if (hayAnterior) navRows.push({ id: "pagina_anterior", title: "Pagina anterior", description: `Pagina ${pagina} de ${totalPaginas}` })
@@ -1556,15 +1780,10 @@ async function mostrarHorariosPropiedad(propiedadId: number, diasMax: number, se
     const hasta = new Date(Date.now() + diasMax * 86400000).toISOString().split("T")[0]
 
     const { data } = await supabase
-        .from("horarios_disponibles")
-        .select("id, fecha, hora_inicio, hora_fin")
-        .eq("propiedad_id", propiedadId)
-        .eq("disponible", true)
-        .gte("fecha", desde)
-        .lte("fecha", hasta)
-        .is("deleted_at", null)
-        .order("fecha", { ascending: true })
-        .limit(6)
+        .from("horarios_disponibles").select("id, fecha, hora_inicio, hora_fin")
+        .eq("propiedad_id", propiedadId).eq("disponible", true)
+        .gte("fecha", desde).lte("fecha", hasta).is("deleted_at", null)
+        .order("fecha", { ascending: true }).limit(6)
 
     if (!data?.length) {
         await updateSession(sessionId, { ...state, step: "solicitar_fecha_visita", propiedad_id: propiedadId, intentos_fecha: 0 })
@@ -1597,15 +1816,10 @@ async function mostrarHorariosProyecto(proyectoId: number, diasMax: number, sess
     const hasta = new Date(Date.now() + diasMax * 86400000).toISOString().split("T")[0]
 
     const { data } = await supabase
-        .from("horarios_disponibles")
-        .select("id, fecha, hora_inicio, hora_fin")
-        .eq("proyecto_id", proyectoId)
-        .eq("disponible", true)
-        .gte("fecha", desde)
-        .lte("fecha", hasta)
-        .is("deleted_at", null)
-        .order("fecha", { ascending: true })
-        .limit(6)
+        .from("horarios_disponibles").select("id, fecha, hora_inicio, hora_fin")
+        .eq("proyecto_id", proyectoId).eq("disponible", true)
+        .gte("fecha", desde).lte("fecha", hasta).is("deleted_at", null)
+        .order("fecha", { ascending: true }).limit(6)
 
     if (!data?.length) {
         await updateSession(sessionId, { ...state, step: "solicitar_fecha_visita", proyecto_id: proyectoId, intentos_fecha: 0 })
@@ -1637,12 +1851,9 @@ async function listarCitasCliente(clienteId: number, tenantId: number): Promise<
     const { data } = await supabase
         .from("reservas")
         .select(`id, fecha, estado, propiedades:propiedad_id(nombre), proyectos:proyecto_id(nombre)`)
-        .eq("cliente_id", clienteId)
-        .eq("tenant_id", tenantId)
-        .gte("fecha", new Date().toISOString())
-        .is("deleted_at", null)
-        .order("fecha", { ascending: true })
-        .limit(5)
+        .eq("cliente_id", clienteId).eq("tenant_id", tenantId)
+        .gte("fecha", new Date().toISOString()).is("deleted_at", null)
+        .order("fecha", { ascending: true }).limit(5)
 
     if (!data?.length) {
         return {
@@ -1667,20 +1878,12 @@ async function listarCitasCliente(clienteId: number, tenantId: number): Promise<
         const fecha = new Date(r.fecha).toLocaleDateString("es-EC", {
             weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
         })
-        const icon = r.estado === "confirmada" ? "✅" : "⏳"
-        return `${icon} ${nombre}\n   ${fecha}`
+        return `${r.estado === "confirmada" ? "✅" : "⏳"} ${nombre}\n   ${fecha}`
     }
 
     const lineas: string[] = []
-    if (confirmadas.length) {
-        lineas.push("*Confirmadas:*")
-        confirmadas.forEach(r => lineas.push(formatCita(r)))
-    }
-    if (pendientes.length) {
-        if (lineas.length) lineas.push("")
-        lineas.push("*Pendientes:*")
-        pendientes.forEach(r => lineas.push(formatCita(r)))
-    }
+    if (confirmadas.length) { lineas.push("*Confirmadas:*"); confirmadas.forEach(r => lineas.push(formatCita(r))) }
+    if (pendientes.length) { if (lineas.length) lineas.push(""); lineas.push("*Pendientes:*"); pendientes.forEach(r => lineas.push(formatCita(r))) }
 
     return {
         tipo: "buttons",
@@ -1701,30 +1904,21 @@ function solicitarCedula(): Respuesta {
     return "Para agendar tu visita necesitamos verificar tu identidad.\n\nIngresa tu numero de cedula (10 digitos):"
 }
 
-function rowPropiedad(nombre: string, ciudad: string, sector: string, precio: string, id: string): { id: string; title: string; description: string } {
+function rowPropiedad(nombre: string, ciudad: string, sector: string, precio: string, id: string) {
     const ubicacion = [sector, ciudad].filter(Boolean).join(", ").slice(0, 24)
     const detalle = [nombre, precio].filter(Boolean).join(" · ").slice(0, 72)
     return { id, title: ubicacion || nombre.slice(0, 24), description: detalle }
 }
 
 function formatearDetallePropiedad(p: any): string {
-    const dim = p.dimensiones || {}
-    const amb = p.ambientes || {}
-    const ext = p.exteriores || {}
-    const est = p.estacionamiento || {}
-    const extra = p.extras || {}
-    const seg = p.seguridad || {}
+    const dim = p.dimensiones || {}, amb = p.ambientes || {}, ext = p.exteriores || {}
+    const est = p.estacionamiento || {}, extra = p.extras || {}, seg = p.seguridad || {}
     const pago = Array.isArray(p.tipo_pago) ? p.tipo_pago.join(", ") : ""
-
     const lineas: string[] = []
 
     if (p.precio) {
-        const precioFmt = `$${Number(p.precio).toLocaleString("es-EC")}`
-        const sufijo = p.tipo_operacion === "alquiler" ? "/mes" : ""
-        const neg = p.precio_negociable ? " (negociable)" : ""
-        lineas.push(`Precio: ${precioFmt}${sufijo}${neg}`)
+        lineas.push(`Precio: $${Number(p.precio).toLocaleString("es-EC")}${p.tipo_operacion === "alquiler" ? "/mes" : ""}${p.precio_negociable ? " (negociable)" : ""}`)
     }
-
     if (dim.m2_construccion) lineas.push(`Construccion: ${dim.m2_construccion}m²`)
     if (dim.m2_terreno) lineas.push(`Terreno: ${dim.m2_terreno}m²`)
     if (dim.m2_total && !dim.m2_construccion) lineas.push(`Total: ${dim.m2_total}m²`)
@@ -1732,11 +1926,7 @@ function formatearDetallePropiedad(p: any): string {
     if (amb.habitaciones) lineas.push(`Habitaciones: ${amb.habitaciones}`)
     if (amb.banos) lineas.push(`Baños: ${amb.banos}`)
     if (amb.medios_banos) lineas.push(`Medios baños: ${amb.medios_banos}`)
-
-    if (est.estacionamientos) {
-        const cub = est.cubierto ? " cubierto" : ""
-        lineas.push(`Garaje: ${est.estacionamientos}${cub}`)
-    }
+    if (est.estacionamientos) lineas.push(`Garaje: ${est.estacionamientos}${est.cubierto ? " cubierto" : ""}`)
     if (est.bodega) lineas.push(`Bodega incluida`)
 
     const extItems = [ext.patio && "Patio", ext.jardin && "Jardín", ext.terraza && "Terraza", ext.balcon && "Balcón", ext.piscina && "Piscina", ext.bbq && "BBQ"].filter(Boolean)
@@ -1760,9 +1950,7 @@ function formatearDetalleProyecto(p: any): string {
     const lineas: string[] = []
 
     if (p.precio_desde) {
-        const precio = `Precio: desde $${Number(p.precio_desde).toLocaleString("es-EC")}` +
-            (p.precio_hasta ? ` hasta $${Number(p.precio_hasta).toLocaleString("es-EC")}` : "")
-        lineas.push(precio)
+        lineas.push(`Precio: desde $${Number(p.precio_desde).toLocaleString("es-EC")}${p.precio_hasta ? ` hasta $${Number(p.precio_hasta).toLocaleString("es-EC")}` : ""}`)
     }
     if (p.fecha_entrega_estimada) lineas.push(`Entrega estimada: ${new Date(p.fecha_entrega_estimada).toLocaleDateString("es-EC")}`)
     if (amenidades) lineas.push(`Amenidades: ${amenidades}`)
