@@ -449,8 +449,8 @@ async function buscarYMostrar(
         p_tenant_id: tenantId,
         p_tipo_propiedad: params.tipo_propiedad || null,
         p_tipo_operacion: params.tipo_operacion || null,
-        p_ciudad_id: null,
-        p_sector_id: null,
+        p_ciudad_id: ciudadId,        // ← ID resuelto
+        p_sector_id: sectorId,        // ← ID resuelto
         p_precio_min: params.precio_min || null,
         p_precio_max: params.precio_max || null,
         p_habitaciones: params.habitaciones_min || null,
@@ -463,9 +463,7 @@ async function buscarYMostrar(
         p_estacionamientos: params.con_estacionamiento ? 1 : null,
         p_ascensor: params.ascensor || null,
         p_amoblado: params.amoblado || null,
-        p_limite: 20,
-        p_ciudad: null,  // ← ya no se necesita
-        p_sector: null,  // ← ya no se necesita
+        p_limite: 20
     })
 
     let queryProyectos = supabase
@@ -497,9 +495,8 @@ async function buscarYMostrar(
             p_tenant_id: tenantId,
             p_tipo_propiedad: params.tipo_propiedad || null,
             p_tipo_operacion: params.tipo_operacion || null,
-            p_ciudad_id: ciudadId,  // mantener ciudad
-            p_sector_id: null,      // quitar sector
-            p_ciudad: null, p_sector: null,  // quitar sector
+            p_ciudad_id: ciudadId,        // ← ID resuelto
+            p_sector_id: sectorId,        // ← ID resuelto
             p_precio_min: null, p_precio_max: null,
             p_habitaciones: null, p_banos: null,
             p_m2_min: null, p_m2_max: null,
@@ -1800,17 +1797,25 @@ async function listaSectores(ciudadId: number, ciudadNombre: string): Promise<Re
 }
 
 async function buscarPropiedades(params: {
-    tenantId: number; tipo_operacion?: string; tipo_propiedad?: string;
-    ciudad_id?: number; sector_id?: number; precio_min?: number; precio_max?: number; habitaciones?: number
+    tenantId: number
+    tipo_operacion?: string
+    tipo_propiedad?: string
+    ciudad_id?: number
+    sector_id?: number
+    precio_min?: number
+    precio_max?: number
+    habitaciones?: number
 }): Promise<any[]> {
     const { data } = await supabase.rpc("buscar_propiedades", {
         p_tenant_id: params.tenantId,
         p_tipo_operacion: params.tipo_operacion || null,
         p_tipo_propiedad: params.tipo_propiedad || null,
+        p_provincia_id: null,
         p_ciudad_id: params.ciudad_id || null,
         p_sector_id: params.sector_id || null,
         p_precio_min: params.precio_min || null,
         p_precio_max: params.precio_max || null,
+        p_tipo_pago: null,
         p_habitaciones: params.habitaciones || null,
         p_banos: null, p_m2_min: null, p_m2_max: null,
         p_patio: null, p_jardin: null, p_piscina: null,

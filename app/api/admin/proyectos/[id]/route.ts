@@ -43,18 +43,35 @@ export async function GET(
 
 export async function PATCH(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
 
+    const { id } = await params
     const body = await request.json()
     delete body.tenant_id
 
+    const extraerId = (v: any): number | null => {
+        if (!v && v !== 0) return null
+        if (typeof v === "object" && v?.id) return parseInt(v.id)
+        const n = parseInt(v)
+        return isNaN(n) ? null : n
+    }
+
+    const datosLimpios = {
+        ...body,
+        ciudad_id: extraerId(body.ciudad_id),
+        sector_id: extraerId(body.sector_id),
+        // Quitar objetos join que Supabase rechaza
+        ciudad: undefined,
+        sector: undefined,
+    }
+
     const { data, error } = await supabase
         .from("proyectos")
-        .update(body)
-        .eq("id", parseInt(params.id))
+        .update(datosLimpios)
+        .eq("id", parseInt(id))
         .eq("tenant_id", session.tenantId)
         .is("deleted_at", null)
         .select()
