@@ -14,6 +14,7 @@ const AMENIDADES_LISTA = [
     "juegos_infantiles", "ascensor", "generador", "cisterna"
 ]
 
+
 interface Props {
     proyectosIniciales: any[]
     ciudades: any[]
@@ -89,7 +90,7 @@ export default function ProyectosClient({
             precio_desde: "", precio_hasta: "",
             tipo_pago: ["contado", "financiamiento"],
             estado: "activo", fecha_entrega_estimada: "",
-            amenidades: [], sitio_web: "", fotos: [],
+            amenidades: [], sitio_web: "", fotos: [] as FotoItem[],
             ciudad_id: "", sector_id: "",
         })
         setCiudadSeleccionada(null)
@@ -110,7 +111,11 @@ export default function ProyectosClient({
                 ? p.fecha_entrega_estimada.split("T")[0] : "",
             amenidades: Array.isArray(p.amenidades) ? p.amenidades : [],
             sitio_web: p.sitio_web || "",
-            fotos: p.fotos || [],
+            fotos: (p.fotos || []).map((url: string) => ({
+                tipo: "remota" as const,
+                url,
+                preview: url
+            })),
             ciudad_id: (p.ciudad as any)?.id || "",
             sector_id: (p.sector as any)?.id || "",
         })
@@ -126,6 +131,8 @@ export default function ProyectosClient({
 
         setGuardando(true)
         try {
+            const fotosUrls = await subirFotosPendientes(form.fotos || [])
+
             const body = {
                 nombre: form.nombre,
                 descripcion: form.descripcion,
@@ -137,7 +144,7 @@ export default function ProyectosClient({
                 fecha_entrega_estimada: form.fecha_entrega_estimada || null,
                 amenidades: form.amenidades,
                 sitio_web: form.sitio_web,
-                fotos: form.fotos,
+                fotos: fotosUrls,
                 ciudad_id: parseInt(form.ciudad_id),
                 sector_id: form.sector_id ? parseInt(form.sector_id) : null,
             }
@@ -492,11 +499,11 @@ export default function ProyectosClient({
                                     }}
                                         onMouseEnter={e => {
                                             (e.currentTarget as HTMLElement).style.background = "var(--srb)"
-                                            ;(e.currentTarget as HTMLElement).style.color = "var(--sr)"
+                                                ; (e.currentTarget as HTMLElement).style.color = "var(--sr)"
                                         }}
                                         onMouseLeave={e => {
                                             (e.currentTarget as HTMLElement).style.background = "var(--surface2)"
-                                            ;(e.currentTarget as HTMLElement).style.color = "var(--text2)"
+                                                ; (e.currentTarget as HTMLElement).style.color = "var(--text2)"
                                         }}
                                     >✕</button>
                                 </div>
@@ -694,11 +701,11 @@ export default function ProyectosClient({
                                                                     }}
                                                                     onMouseEnter={e => {
                                                                         (e.currentTarget as HTMLElement).style.background = "var(--srb)"
-                                                                        ;(e.currentTarget as HTMLElement).style.color = "var(--sr)"
+                                                                            ; (e.currentTarget as HTMLElement).style.color = "var(--sr)"
                                                                     }}
                                                                     onMouseLeave={e => {
                                                                         (e.currentTarget as HTMLElement).style.background = "var(--surface2)"
-                                                                        ;(e.currentTarget as HTMLElement).style.color = "var(--text2)"
+                                                                            ; (e.currentTarget as HTMLElement).style.color = "var(--text2)"
                                                                     }}
                                                                 >✕</button>
                                                             </div>
@@ -842,6 +849,16 @@ export default function ProyectosClient({
                                 <input type="text" value={form.sitio_web}
                                     onChange={e => setForm((p: any) => ({ ...p, sitio_web: e.target.value }))}
                                     placeholder="https://miproyecto.com" />
+                            </Campo>
+                            <Campo label="Fotos del proyecto">
+                                <FotoUploader
+                                    fotosIniciales={proyActual?.fotos || []}
+                                    fotos={form.fotos || []}
+                                    onChange={fotos => setForm((p: any) => ({ ...p, fotos }))}
+                                />
+                                <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 4 }}>
+                                    Las fotos se suben al guardar. La primera es la portada.
+                                </div>
                             </Campo>
                             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", paddingTop: 4 }}>
                                 <button onClick={() => setModal(null)} style={{

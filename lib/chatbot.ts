@@ -22,27 +22,48 @@ type Respuesta = string | { tipo: "buttons" | "list" | "image"; payload: any }
 async function validarYEnriquecerParametros(
     params: ParametrosExtraidos,
     tenantId: number
-): Promise<ParametrosExtraidos & { ambiguo?: { tipo: "sector_multiciudad"; sector: string; ciudades: any[] } }> {
+): Promise<ParametrosExtraidos & { ambiguo?: any }> {
     const enriquecido: any = { ...params }
 
     if (params.ciudad) {
-        const { data: ciudadDB } = await supabase
+        // Paso 1 — verificar si es ciudad válida (match exacto primero)
+        const { data: ciudadExacta } = await supabase
+            .from("ciudades")
+            .select("id, nombre")
+            .ilike("nombre", params.ciudad)  // ← exacto, sin %
+            .maybeSingle()
+
+        // Si no coincide exacto, intentar con %
+        const { data: ciudadDB } = ciudadExacta ? { data: ciudadExacta } : await supabase
             .from("ciudades")
             .select("id, nombre")
             .ilike("nombre", `%${params.ciudad}%`)
             .maybeSingle()
 
         if (!ciudadDB) {
-            const { data: sectoresDB } = await supabase
+            // Paso 2 — buscar como sector, ordenar por similitud
+            // Usar match exacto primero para evitar falsos positivos
+            const { data: sectorExacto } = await supabase
+                .from("sectores")
+                .select("id, nombre, ciudades:ciudad_id(id, nombre)")
+                .ilike("nombre", params.ciudad)  // exacto primero
+                .limit(5)
+
+            const { data: sectorFuzzy } = (!sectorExacto?.length) ? await supabase
                 .from("sectores")
                 .select("id, nombre, ciudades:ciudad_id(id, nombre)")
                 .ilike("nombre", `%${params.ciudad}%`)
+                .limit(5) : { data: null }
 
-            if (sectoresDB?.length === 1) {
+            const sectoresDB = sectorExacto?.length ? sectorExacto : (sectorFuzzy || [])
+
+            if (sectoresDB.length === 1) {
                 enriquecido.sector = sectoresDB[0].nombre
                 enriquecido.ciudad = (sectoresDB[0].ciudades as any)?.nombre || undefined
-                console.log(`[NLP] "${params.ciudad}" es sector único → ciudad: ${enriquecido.ciudad}`)
-            } else if (sectoresDB && sectoresDB.length > 1) {
+                console.log(`[NLP] "${params.ciudad}" → sector único: ${enriquecido.sector}, ciudad: ${enriquecido.ciudad}`)
+
+            } else if (sectoresDB.length > 1) {
+                // Ambiguo — múltiples ciudades
                 enriquecido.sector = sectoresDB[0].nombre
                 enriquecido.ciudad = undefined
                 enriquecido.ambiguo = {
@@ -53,19 +74,25 @@ async function validarYEnriquecerParametros(
                         nombre: (s.ciudades as any)?.nombre
                     })).filter(c => c.id)
                 }
-                console.log(`[NLP] "${params.ciudad}" es sector ambiguo en ${sectoresDB.length} ciudades`)
+                console.log(`[NLP] "${params.ciudad}" ambiguo en ${sectoresDB.length} ciudades`)
+
             } else {
-                console.log(`[NLP] "${params.ciudad}" no reconocido`)
+                // No existe como sector — NO limpiar ciudad, marcar como desconocido
+                // para que se pregunte al usuario
+                console.log(`[NLP] "${params.ciudad}" no reconocido como ciudad ni sector`)
+                enriquecido.ciudad_desconocida = params.ciudad
                 enriquecido.ciudad = undefined
             }
         }
     }
 
+    // Si tiene sector pero no ciudad — derivar ciudad
     if (enriquecido.sector && !enriquecido.ciudad && !enriquecido.ambiguo) {
         const { data: sectoresDB } = await supabase
             .from("sectores")
             .select("id, nombre, ciudades:ciudad_id(id, nombre)")
-            .ilike("nombre", `%${enriquecido.sector}%`)
+            .ilike("nombre", enriquecido.sector)  // exacto
+            .limit(5)
 
         if (sectoresDB?.length === 1) {
             enriquecido.ciudad = (sectoresDB[0].ciudades as any)?.nombre || undefined
@@ -395,7 +422,29 @@ async function buscarYMostrar(
     config: any
 ): Promise<Respuesta> {
     const tenantId = tenant.id
+    let ciudadId: number | null = null
+    let sectorId: number | null = null
 
+    if (params.ciudad) {
+        const { data: c } = await supabase
+            .from("ciudades")
+            .select("id")
+            .ilike("nombre", `%${params.ciudad}%`)
+            .maybeSingle()
+        ciudadId = c?.id || null
+        console.log("[Búsqueda] ciudad:", params.ciudad, "→ id:", ciudadId)
+    }
+
+    if (params.sector && ciudadId) {
+        const { data: s } = await supabase
+            .from("sectores")
+            .select("id")
+            .eq("ciudad_id", ciudadId)
+            .ilike("nombre", `%${params.sector}%`)
+            .maybeSingle()
+        sectorId = s?.id || null
+        console.log("[Búsqueda] sector:", params.sector, "→ id:", sectorId)
+    }
     const { data: propiedades } = await supabase.rpc("buscar_propiedades", {
         p_tenant_id: tenantId,
         p_tipo_propiedad: params.tipo_propiedad || null,
@@ -415,8 +464,8 @@ async function buscarYMostrar(
         p_ascensor: params.ascensor || null,
         p_amoblado: params.amoblado || null,
         p_limite: 20,
-        p_ciudad: params.ciudad || null,
-        p_sector: params.sector || null,
+        p_ciudad: null,  // ← ya no se necesita
+        p_sector: null,  // ← ya no se necesita
     })
 
     let queryProyectos = supabase
@@ -448,9 +497,9 @@ async function buscarYMostrar(
             p_tenant_id: tenantId,
             p_tipo_propiedad: params.tipo_propiedad || null,
             p_tipo_operacion: params.tipo_operacion || null,
-            p_ciudad: params.ciudad || null,
-            p_sector: null,
-            p_ciudad_id: null, p_sector_id: null,
+            p_ciudad_id: ciudadId,  // mantener ciudad
+            p_sector_id: null,      // quitar sector
+            p_ciudad: null, p_sector: null,  // quitar sector
             p_precio_min: null, p_precio_max: null,
             p_habitaciones: null, p_banos: null,
             p_m2_min: null, p_m2_max: null,
@@ -804,7 +853,6 @@ export async function handleMessage({
             const { data: c } = await supabase.from("ciudades").select("nombre").eq("id", ciudadId).single()
             if (c) acumulado.ciudad = c.nombre
         } else {
-            // Texto libre — usar interpretarTextoLibre
             const resultado = await interpretarTextoLibre(text, paramActual, tenant.id, acumulado)
 
             if (resultado.ambiguo) {
@@ -824,8 +872,9 @@ export async function handleMessage({
                 if (resultado.sector) acumulado.sector = resultado.sector
                 if (resultado.ciudad && paramActual === "ciudad") acumulado.ciudad = resultado.ciudad
             } else {
-                // NLP y fuzzy fallaron — respuesta según parámetro
+                // ── FIX 2 — respuesta específica según parámetro y contexto ──
                 if (paramActual === "tipo_propiedad") return await listaTipoPropiedad()
+
                 if (paramActual === "tipo_operacion") {
                     await updateSession(session.id, { ...state, params_busqueda: acumulado })
                     return {
@@ -839,8 +888,16 @@ export async function handleMessage({
                         }
                     }
                 }
+
+                if (paramActual === "ciudad") {
+                    // Saber si el texto era un lugar desconocido o simplemente no se entendió
+                    const lugarEscrito = text.trim()
+                    await updateSession(session.id, { ...state, params_busqueda: acumulado })
+                    return `No encontré "${lugarEscrito}" como ciudad ni sector en Ecuador.\n\nEscribe la ciudad donde buscas:\n\nEj: Guayaquil, Quito, Cuenca, Samborondón, Manta`
+                }
+
                 await updateSession(session.id, { ...state, params_busqueda: acumulado })
-                return `No reconoci esa ${paramActual === "ciudad" ? "ciudad o sector" : paramActual}. Escribe el nombre completo:\n\nEj: Guayaquil, Norte de Guayaquil, Urdesa, Cumbayá`
+                return `No entendi. Puedes ser más específico?`
             }
 
             // Aprovechar otros params del NLP
@@ -851,7 +908,7 @@ export async function handleMessage({
                         (acumulado as any)[k] = v
                     }
                 })
-            } catch {}
+            } catch { }
         }
 
         const pendientes = parametrosFaltantes(acumulado)
@@ -1392,19 +1449,40 @@ async function mostrarDetallePropiedad(
     if (!prop) return "Propiedad no encontrada."
 
     await Promise.all([
-        supabase.from("propiedades").update({ total_consultas: (prop.total_consultas || 0) + 1 }).eq("id", propiedadId),
-        updateSession(session.id, { ...state, step: "detalle_propiedad", propiedad_id: propiedadId })
+        supabase.from("propiedades")
+            .update({ total_consultas: (prop.total_consultas || 0) + 1 })
+            .eq("id", propiedadId),
+        updateSession(session.id, {
+            ...state, step: "detalle_propiedad", propiedad_id: propiedadId
+        })
     ])
-
-    const fotos = prop.fotos as any[]
-    if (fotos?.length > 0) {
-        const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
-        if (url && phoneNumberId && from) await sendWhatsAppImage(phoneNumberId, from, url, prop.nombre).catch(() => { })
-    }
 
     const ciudadNombre = (prop.ciudad as any)?.nombre || ""
     const sectorNombre = (prop.sector as any)?.nombre || ""
     const ubicacion = [sectorNombre, ciudadNombre].filter(Boolean).join(", ")
+
+    // Construir caption con info básica para la foto
+    const precio = prop.precio
+        ? `$${Number(prop.precio).toLocaleString("es-EC")}${prop.tipo_operacion === "alquiler" ? "/mes" : ""}`
+        : ""
+    const hab = (prop.ambientes as any)?.habitaciones
+    const m2 = (prop.dimensiones as any)?.m2_construccion || (prop.dimensiones as any)?.m2_total
+    const captionPartes = [prop.nombre, ubicacion, precio, hab ? `${hab} hab` : null, m2 ? `${m2}m²` : null].filter(Boolean)
+    const caption = captionPartes.join(" · ").slice(0, 1024)
+
+    // Enviar TODAS las fotos disponibles (máx 3 para no saturar)
+    const fotos = prop.fotos as any[]
+    if (fotos?.length > 0) {
+        const fotosAEnviar = fotos.slice(0, 3)
+        for (let i = 0; i < fotosAEnviar.length; i++) {
+            const url = typeof fotosAEnviar[i] === "string" ? fotosAEnviar[i] : fotosAEnviar[i]?.url
+            if (url && phoneNumberId && from) {
+                // Caption solo en la última foto para que llegue junto con los botones
+                const captionFoto = i === fotosAEnviar.length - 1 ? caption : undefined
+                await sendWhatsAppImage(phoneNumberId, from, url, captionFoto).catch(() => { })
+            }
+        }
+    }
 
     return {
         tipo: "buttons",
@@ -1435,17 +1513,32 @@ async function mostrarDetalleProyecto(
     if (!proy) return await listarProyectos(tenant.id) as Respuesta
 
     await Promise.all([
-        supabase.from("proyectos").update({ total_consultas: (proy.total_consultas || 0) + 1 }).eq("id", proyectoId),
-        updateSession(session.id, { ...state, step: "detalle_proyecto", proyecto_id: proyectoId })
+        supabase.from("proyectos")
+            .update({ total_consultas: (proy.total_consultas || 0) + 1 })
+            .eq("id", proyectoId),
+        updateSession(session.id, {
+            ...state, step: "detalle_proyecto", proyecto_id: proyectoId
+        })
     ])
 
+    const ciudadNombre = (proy.ciudad as any)?.nombre || ""
+    const precio = proy.precio_desde
+        ? `Desde $${Number(proy.precio_desde).toLocaleString("es-EC")}`
+        : ""
+    const caption = [proy.nombre, ciudadNombre, precio].filter(Boolean).join(" · ").slice(0, 1024)
+
+    // Enviar fotos del proyecto (máx 3)
     const fotos = proy.fotos as any[]
     if (fotos?.length > 0) {
-        const url = typeof fotos[0] === "string" ? fotos[0] : fotos[0]?.url
-        if (url && phoneNumberId && from) await sendWhatsAppImage(phoneNumberId, from, url, proy.nombre).catch(() => { })
+        const fotosAEnviar = fotos.slice(0, 3)
+        for (let i = 0; i < fotosAEnviar.length; i++) {
+            const url = typeof fotosAEnviar[i] === "string" ? fotosAEnviar[i] : fotosAEnviar[i]?.url
+            if (url && phoneNumberId && from) {
+                const captionFoto = i === fotosAEnviar.length - 1 ? caption : undefined
+                await sendWhatsAppImage(phoneNumberId, from, url, captionFoto).catch(() => { })
+            }
+        }
     }
-
-    const ciudadNombre = (proy.ciudad as any)?.nombre || ""
 
     return {
         tipo: "buttons",
