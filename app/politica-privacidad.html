@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Política de Privacidad — INMOBIL.IA</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --surface2: #181818;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --accent: #1DB954;
+    --accent2: #15a349;
+    --text: #f0f0f0;
+    --text2: #a0a0a0;
+    --text3: #555;
+    --red: #ff4444;
+    --gold: #f0c040;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    min-height: 100vh;
+  }
+
+  /* ── Noise overlay ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.4;
+  }
+
+  /* ── Header ── */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgba(10,10,10,0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .logo {
+    font-family: 'DM Serif Display', serif;
+    font-size: 20px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+  }
+
+  .logo-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  .header-tag {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    background: rgba(29,185,84,0.1);
+    border: 1px solid rgba(29,185,84,0.2);
+    padding: 4px 10px;
+    border-radius: 20px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    padding: 80px 40px 60px;
+    max-width: 860px;
+    margin: 0 auto;
+    position: relative;
+  }
+
+  .hero-eyebrow {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .hero-eyebrow::before {
+    content: '';
+    display: block;
+    width: 24px;
+    height: 1px;
+    background: var(--accent);
+  }
+
+  h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(36px, 5vw, 56px);
+    line-height: 1.1;
+    color: var(--text);
+    margin-bottom: 24px;
+    font-weight: 400;
+  }
+
+  h1 em {
+    font-style: italic;
+    color: var(--accent);
+  }
+
+  .hero-meta {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--text3);
+    font-family: 'DM Mono', monospace;
+    border-top: 1px solid var(--border);
+    padding-top: 20px;
+    margin-top: 20px;
+  }
+
+  .hero-meta span { display: flex; align-items: center; gap: 6px; }
+  .hero-meta span::before { content: '//'; color: var(--accent); }
+
+  /* ── Layout ── */
+  .layout {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0 40px 100px;
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 60px;
+    align-items: start;
+  }
+
+  /* ── TOC ── */
+  .toc {
+    position: sticky;
+    top: 80px;
+  }
+
+  .toc-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    margin-bottom: 12px;
+  }
+
+  .toc-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .toc-list a {
+    display: block;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--text2);
+    text-decoration: none;
+    border-radius: 6px;
+    border-left: 2px solid transparent;
+    transition: all .15s;
+    line-height: 1.4;
+  }
+
+  .toc-list a:hover {
+    color: var(--accent);
+    border-left-color: var(--accent);
+    background: rgba(29,185,84,0.05);
+    padding-left: 14px;
+  }
+
+  /* ── Content ── */
+  .content { min-width: 0; }
+
+  .section {
+    margin-bottom: 56px;
+    opacity: 0;
+    transform: translateY(16px);
+    animation: fadeUp .5s ease forwards;
+  }
+
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .section:nth-child(1) { animation-delay: .05s; }
+  .section:nth-child(2) { animation-delay: .1s; }
+  .section:nth-child(3) { animation-delay: .15s; }
+  .section:nth-child(4) { animation-delay: .2s; }
+  .section:nth-child(5) { animation-delay: .25s; }
+  .section:nth-child(6) { animation-delay: .3s; }
+  .section:nth-child(7) { animation-delay: .35s; }
+  .section:nth-child(8) { animation-delay: .4s; }
+  .section:nth-child(9) { animation-delay: .45s; }
+  .section:nth-child(10) { animation-delay: .5s; }
+
+  .section-num {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: .1em;
+    margin-bottom: 6px;
+  }
+
+  h2 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 24px;
+    font-weight: 400;
+    color: var(--text);
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  h3 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 20px 0 8px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    font-family: 'DM Mono', monospace;
+  }
+
+  p { color: var(--text2); margin-bottom: 12px; }
+
+  p strong { color: var(--text); font-weight: 600; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin: 16px 0;
+  }
+
+  .card-alert {
+    background: rgba(255,68,68,0.06);
+    border-color: rgba(255,68,68,0.2);
+  }
+
+  .card-alert p { color: #ff9090; }
+  .card-alert strong { color: #ffcccc; }
+
+  .card-note {
+    background: rgba(29,185,84,0.06);
+    border-color: rgba(29,185,84,0.2);
+  }
+
+  .card-note p { color: #7dcc9a; }
+  .card-note strong { color: #b8eecb; }
+
+  .card-gold {
+    background: rgba(240,192,64,0.06);
+    border-color: rgba(240,192,64,0.2);
+  }
+
+  .card-gold p { color: #d4a843; }
+  .card-gold strong { color: #f0d080; }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .card-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .card-alert .card-icon { background: rgba(255,68,68,0.15); }
+  .card-note .card-icon { background: rgba(29,185,84,0.15); }
+  .card-gold .card-icon { background: rgba(240,192,64,0.15); }
+
+  .card-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  .card-alert .card-label { color: var(--red); }
+  .card-note .card-label { color: var(--accent); }
+  .card-gold .card-label { color: var(--gold); }
+
+  /* ── Lista ── */
+  ul.lista {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 12px 0;
+  }
+
+  ul.lista li {
+    display: flex;
+    gap: 10px;
+    color: var(--text2);
+    font-size: 14px;
+  }
+
+  ul.lista li::before {
+    content: '→';
+    color: var(--accent);
+    flex-shrink: 0;
+    margin-top: 1px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+  }
+
+  ul.lista li strong { color: var(--text); }
+
+  /* ── Data table ── */
+  .data-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 16px 0;
+  }
+
+  .data-cell {
+    background: var(--surface);
+    padding: 14px 16px;
+  }
+
+  .data-cell-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-bottom: 4px;
+  }
+
+  .data-cell-value {
+    font-size: 13px;
+    color: var(--text2);
+  }
+
+  /* ── Separator ── */
+  .sep {
+    height: 1px;
+    background: var(--border);
+    margin: 40px 0;
+  }
+
+  /* ── Tag ── */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    vertical-align: middle;
+    margin: 0 2px;
+  }
+
+  .tag-green {
+    background: rgba(29,185,84,0.12);
+    color: var(--accent);
+    border: 1px solid rgba(29,185,84,0.2);
+  }
+
+  .tag-red {
+    background: rgba(255,68,68,0.12);
+    color: #ff8080;
+    border: 1px solid rgba(255,68,68,0.2);
+  }
+
+  /* ── Contact ── */
+  .contact-box {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 14px;
+    padding: 28px;
+    margin-top: 16px;
+  }
+
+  .contact-box a {
+    color: var(--accent);
+    text-decoration: none;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+  }
+
+  /* ── Footer ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 32px 40px;
+    max-width: 860px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .footer-brand {
+    font-family: 'DM Serif Display', serif;
+    font-size: 15px;
+    color: var(--text3);
+  }
+
+  .footer-copy {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: .06em;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 700px) {
+    header { padding: 14px 20px; }
+    .hero { padding: 48px 20px 40px; }
+    .layout { grid-template-columns: 1fr; padding: 0 20px 80px; gap: 40px; }
+    .toc { display: none; }
+    footer { padding: 24px 20px; }
+    .data-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="#" class="logo">
+    <div class="logo-dot"></div>
+    INMOBIL.IA
+  </a>
+  <span class="header-tag">Política de Privacidad</span>
+</header>
+
+<div class="hero">
+  <div class="hero-eyebrow">Documento legal</div>
+  <h1>Política de <em>Privacidad</em></h1>
+  <div class="hero-meta">
+    <span>Versión 1.0</span>
+    <span>Vigente desde Abril 2026</span>
+    <span>Ecuador</span>
+    <span>LORTDI aplicable</span>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- TOC -->
+  <nav class="toc">
+    <div class="toc-title">Contenido</div>
+    <ul class="toc-list">
+      <li><a href="#quienes-somos">1. Quiénes somos</a></li>
+      <li><a href="#alcance">2. Alcance del servicio</a></li>
+      <li><a href="#datos-recopilados">3. Datos recopilados</a></li>
+      <li><a href="#como-usamos">4. Uso de la información</a></li>
+      <li><a href="#terceros">5. Relación con terceros</a></li>
+      <li><a href="#whatsapp">6. WhatsApp y Meta</a></li>
+      <li><a href="#almacenamiento">7. Almacenamiento</a></li>
+      <li><a href="#derechos">8. Tus derechos</a></li>
+      <li><a href="#menores">9. Menores de edad</a></li>
+      <li><a href="#cambios">10. Cambios</a></li>
+      <li><a href="#contacto">11. Contacto</a></li>
+    </ul>
+  </nav>
+
+  <!-- Content -->
+  <div class="content">
+
+    <!-- 1 -->
+    <div class="section" id="quienes-somos">
+      <div class="section-num">01</div>
+      <h2>Quiénes somos</h2>
+      <p>
+        <strong>INMOBIL.IA</strong> es una plataforma de software como servicio (SaaS) que provee
+        soluciones de automatización conversacional mediante inteligencia artificial para el sector
+        inmobiliario, operando en Ecuador y disponible para expansión regional.
+      </p>
+      <p>
+        INMOBIL.IA actúa exclusivamente como <strong>proveedor tecnológico</strong>. No es una
+        inmobiliaria, agencia de bienes raíces, ni intermediario en transacciones inmobiliarias de
+        ningún tipo.
+      </p>
+      <div class="data-grid">
+        <div class="data-cell">
+          <div class="data-cell-label">Naturaleza</div>
+          <div class="data-cell-value">Plataforma SaaS de automatización</div>
+        </div>
+        <div class="data-cell">
+          <div class="data-cell-label">Operación</div>
+          <div class="data-cell-value">Ecuador — Abril 2026</div>
+        </div>
+        <div class="data-cell">
+          <div class="data-cell-label">Marco legal</div>
+          <div class="data-cell-value">LORTDI, LOPDP Ecuador</div>
+        </div>
+        <div class="data-cell">
+          <div class="data-cell-label">Servicio principal</div>
+          <div class="data-cell-value">Chatbot WhatsApp para inmobiliarias</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2 -->
+    <div class="section" id="alcance">
+      <div class="section-num">02</div>
+      <h2>Alcance del servicio</h2>
+
+      <div class="card card-note">
+        <div class="card-header">
+          <div class="card-icon">✦</div>
+          <div class="card-label">Definición clara</div>
+        </div>
+        <p>
+          <strong>INMOBIL.IA únicamente provee la tecnología del chatbot.</strong> El servicio
+          consiste en un asistente conversacional automatizado que opera a través de WhatsApp
+          Business API, capaz de atender consultas de usuarios finales en nombre de las
+          inmobiliarias que contratan la plataforma.
+        </p>
+      </div>
+
+      <h3>Lo que hace INMOBIL.IA</h3>
+      <ul class="lista">
+        <li>Proveer y operar el chatbot de atención automatizada por WhatsApp</li>
+        <li>Procesar mensajes entrantes y generar respuestas automáticas</li>
+        <li>Almacenar el historial de conversaciones para las inmobiliarias contratantes</li>
+        <li>Gestionar el agendamiento de citas dentro de la plataforma</li>
+        <li>Proveer el panel de administración a las inmobiliarias</li>
+      </ul>
+
+      <h3>Lo que NO hace INMOBIL.IA</h3>
+      <ul class="lista">
+        <li><strong>No intermedia</strong> en ninguna transacción inmobiliaria</li>
+        <li><strong>No asesora</strong> en la compra, venta o arriendo de propiedades</li>
+        <li><strong>No garantiza</strong> la exactitud de la información de propiedades publicada por las inmobiliarias</li>
+        <li><strong>No gestiona</strong> pagos, contratos ni acuerdos entre partes</li>
+        <li><strong>No toma decisiones</strong> en nombre del usuario final ni de la inmobiliaria</li>
+      </ul>
+    </div>
+
+    <!-- 3 -->
+    <div class="section" id="datos-recopilados">
+      <div class="section-num">03</div>
+      <h2>Datos que recopilamos</h2>
+
+      <p>Al interactuar con el chatbot de INMOBIL.IA a través de WhatsApp, se recopila
+      la siguiente información:</p>
+
+      <h3>Datos del usuario final (lead)</h3>
+      <ul class="lista">
+        <li><strong>Número de teléfono de WhatsApp</strong> — requerido por la API de Meta para recibir y enviar mensajes</li>
+        <li><strong>Contenido de los mensajes</strong> — texto enviado durante la conversación con el bot</li>
+        <li><strong>Marca de tiempo</strong> — fecha y hora de cada mensaje</li>
+        <li><strong>Nombre de perfil de WhatsApp</strong> — cuando es compartido por Meta en el evento del webhook</li>
+        <li><strong>Cédula de identidad</strong> — únicamente cuando el usuario la proporciona voluntariamente para agendar una cita y verificar identidad</li>
+        <li><strong>Preferencias de búsqueda</strong> — tipo de propiedad, rango de precios, ubicación y otras características expresadas en la conversación</li>
+      </ul>
+
+      <h3>Datos técnicos de operación</h3>
+      <ul class="lista">
+        <li><strong>IDs de mensaje de WhatsApp</strong> — para gestión interna de conversaciones</li>
+        <li><strong>Estado de sesión del bot</strong> — paso del flujo conversacional en que se encuentra el usuario</li>
+        <li><strong>Registros de actividad</strong> — logs del sistema para diagnóstico técnico</li>
+      </ul>
+
+      <div class="card card-gold">
+        <div class="card-header">
+          <div class="card-icon">⚠</div>
+          <div class="card-label">Importante</div>
+        </div>
+        <p>
+          INMOBIL.IA <strong>no recopila</strong> datos de pago, datos bancarios, documentos
+          adjuntos, fotos personales, ni ningún dato sensible más allá de los listados anteriormente.
+          La cédula de identidad se recopila únicamente para verificación de identidad previa al
+          agendamiento de visitas, mediante consulta a registros oficiales.
+        </p>
+      </div>
+    </div>
+
+    <!-- 4 -->
+    <div class="section" id="como-usamos">
+      <div class="section-num">04</div>
+      <h2>Cómo usamos la información</h2>
+
+      <p>Los datos recopilados se utilizan exclusivamente para:</p>
+
+      <ul class="lista">
+        <li><strong>Operar el chatbot</strong> — mantener el contexto de la conversación y responder adecuadamente a las consultas del usuario</li>
+        <li><strong>Verificación de identidad</strong> — validar la cédula de identidad mediante el algoritmo de módulo 10 y consulta a registros del Registro Civil cuando aplica</li>
+        <li><strong>Gestión de citas</strong> — registrar y confirmar agendamientos de visitas a propiedades solicitados por el usuario</li>
+        <li><strong>Notificaciones operacionales</strong> — enviar confirmaciones de citas y recordatorios directamente al usuario por WhatsApp</li>
+        <li><strong>Proveer información a la inmobiliaria</strong> — el historial de conversación y los datos de contacto son accesibles para la inmobiliaria contratante que gestiona al usuario</li>
+        <li><strong>Diagnóstico técnico</strong> — identificar y corregir errores en el funcionamiento del sistema</li>
+      </ul>
+
+      <div class="card card-note">
+        <div class="card-header">
+          <div class="card-icon">✦</div>
+          <div class="card-label">Política de uso</div>
+        </div>
+        <p>
+          INMOBIL.IA <strong>no vende, alquila, comercializa ni cede</strong> los datos de
+          usuarios finales a terceros ajenos a la inmobiliaria contratante del servicio.
+          Los datos no son utilizados para publicidad, perfilamiento comercial ni análisis
+          de mercado sin anonimización previa.
+        </p>
+      </div>
+    </div>
+
+    <!-- 5 -->
+    <div class="section" id="terceros">
+      <div class="section-num">05</div>
+      <h2>Relación con terceros — Las inmobiliarias</h2>
+
+      <div class="card card-alert">
+        <div class="card-header">
+          <div class="card-icon">!</div>
+          <div class="card-label">Aviso importante</div>
+        </div>
+        <p>
+          <strong>Toda relación, comunicación, negociación y transacción entre el usuario final
+          (lead) y la inmobiliaria es de carácter externo y completamente ajeno a INMOBIL.IA.</strong>
+        </p>
+        <p>
+          INMOBIL.IA actúa únicamente como canal tecnológico de comunicación inicial. Una vez que
+          el usuario agenda una visita, solicita un agente o establece contacto directo con la
+          inmobiliaria, cualquier intercambio posterior ocurre <strong>fuera del ámbito de
+          responsabilidad de INMOBIL.IA</strong>.
+        </p>
+      </div>
+
+      <h3>Responsabilidad de las inmobiliarias contratantes</h3>
+      <p>
+        Las empresas inmobiliarias que contratan INMOBIL.IA son <strong>responsables directas</strong>
+        del tratamiento de los datos de sus clientes una vez que acceden a la información a través
+        del panel de administración. Cada inmobiliaria es responsable de:
+      </p>
+      <ul class="lista">
+        <li>La veracidad de la información de propiedades publicada en el sistema</li>
+        <li>El manejo ético y legal de los datos de sus leads</li>
+        <li>Las conversaciones, negociaciones y acuerdos que establezcan con los usuarios</li>
+        <li>El cumplimiento de sus propias obligaciones legales como agentes inmobiliarios</li>
+        <li>La gestión de citas, visitas y cualquier acuerdo comercial</li>
+      </ul>
+
+      <h3>INMOBIL.IA no es responsable de</h3>
+      <ul class="lista">
+        <li>La calidad, exactitud o disponibilidad de las propiedades listadas por las inmobiliarias</li>
+        <li>Los acuerdos, contratos o transacciones entre inmobiliarias y usuarios</li>
+        <li>Las prácticas de privacidad de las inmobiliarias contratantes</li>
+        <li>Cualquier daño derivado de la relación directa entre el usuario y la inmobiliaria</li>
+        <li>El incumplimiento de compromisos adquiridos por la inmobiliaria fuera de la plataforma</li>
+      </ul>
+    </div>
+
+    <!-- 6 -->
+    <div class="section" id="whatsapp">
+      <div class="section-num">06</div>
+      <h2>WhatsApp y Meta Platforms</h2>
+
+      <p>
+        El chatbot de INMOBIL.IA opera a través de <strong>WhatsApp Business API</strong>,
+        un servicio de Meta Platforms Inc. Al enviar mensajes al chatbot, el usuario también
+        está sujeto a las políticas de privacidad y términos de servicio de WhatsApp y Meta.
+      </p>
+
+      <ul class="lista">
+        <li>Meta procesa los mensajes a través de su infraestructura antes de que lleguen a INMOBIL.IA</li>
+        <li>El número de teléfono del usuario es compartido con INMOBIL.IA por Meta como parte del evento de webhook</li>
+        <li>INMOBIL.IA no tiene control sobre la infraestructura de Meta ni sobre cómo Meta procesa los datos</li>
+        <li>Las políticas de Meta se aplican de forma independiente a esta política de privacidad</li>
+      </ul>
+
+      <div class="card">
+        <p style="margin:0; font-size:13px; color: var(--text3);">
+          Política de privacidad de WhatsApp:
+          <a href="https://www.whatsapp.com/legal/privacy-policy" target="_blank"
+             style="color: var(--accent); text-decoration: none; font-family: 'DM Mono', monospace; font-size: 12px;">
+            whatsapp.com/legal/privacy-policy →
+          </a>
+        </p>
+      </div>
+    </div>
+
+    <!-- 7 -->
+    <div class="section" id="almacenamiento">
+      <div class="section-num">07</div>
+      <h2>Almacenamiento y seguridad</h2>
+
+      <h3>Dónde se almacenan los datos</h3>
+      <p>
+        Los datos son almacenados en <strong>Supabase</strong> (PostgreSQL en la nube),
+        con servidores ubicados en regiones con altos estándares de seguridad. La aplicación
+        opera en <strong>Railway</strong> con conexiones cifradas HTTPS/TLS.
+      </p>
+
+      <ul class="lista">
+        <li><strong>Cifrado en tránsito</strong> — todas las comunicaciones usan TLS 1.2 o superior</li>
+        <li><strong>Cifrado en reposo</strong> — los datos en base de datos están cifrados</li>
+        <li><strong>Row Level Security (RLS)</strong> — cada inmobiliaria solo accede a sus propios datos</li>
+        <li><strong>Tokens de acceso</strong> — almacenados de forma segura, nunca expuestos al cliente</li>
+        <li><strong>Contraseñas</strong> — hasheadas con bcrypt, nunca almacenadas en texto plano</li>
+      </ul>
+
+      <h3>Retención de datos</h3>
+      <ul class="lista">
+        <li>El historial de conversaciones se retiene mientras la inmobiliaria mantiene su suscripción activa</li>
+        <li>Ante cancelación del servicio, los datos se conservan 30 días adicionales para respaldo</li>
+        <li>El usuario puede solicitar la eliminación de sus datos contactando a la inmobiliaria o directamente a INMOBIL.IA</li>
+      </ul>
+    </div>
+
+    <!-- 8 -->
+    <div class="section" id="derechos">
+      <div class="section-num">08</div>
+      <h2>Tus derechos</h2>
+
+      <p>
+        De conformidad con la <strong>Ley Orgánica de Protección de Datos Personales (LOPDP)</strong>
+        de Ecuador y normativa aplicable, los usuarios tienen los siguientes derechos:
+      </p>
+
+      <ul class="lista">
+        <li><strong>Acceso</strong> — conocer qué datos personales tenemos sobre ti</li>
+        <li><strong>Rectificación</strong> — corregir datos inexactos o incompletos</li>
+        <li><strong>Eliminación</strong> — solicitar la supresión de tus datos personales</li>
+        <li><strong>Portabilidad</strong> — recibir tus datos en formato estructurado</li>
+        <li><strong>Oposición</strong> — oponerte al tratamiento de tus datos en determinadas circunstancias</li>
+        <li><strong>Revocación</strong> — retirar el consentimiento otorgado en cualquier momento</li>
+        <li><strong>Bloqueo</strong> — solicitar que tus datos no sean procesados temporalmente</li>
+      </ul>
+
+      <p>
+        Para ejercer cualquiera de estos derechos, el usuario puede contactar directamente a la
+        <strong>inmobiliaria con la que interactuó</strong>, o alternativamente escribir a
+        INMOBIL.IA a través de los medios indicados en la sección de contacto.
+      </p>
+
+      <div class="card card-note">
+        <div class="card-header">
+          <div class="card-icon">✦</div>
+          <div class="card-label">Nota sobre bloqueo</div>
+        </div>
+        <p>
+          Si un usuario solicita no ser contactado, su número puede ser marcado como bloqueado
+          en el sistema. Esto impide que el bot procese futuros mensajes de ese número en la
+          plataforma de la inmobiliaria correspondiente.
+        </p>
+      </div>
+    </div>
+
+    <!-- 9 -->
+    <div class="section" id="menores">
+      <div class="section-num">09</div>
+      <h2>Menores de edad</h2>
+
+      <div class="card card-alert">
+        <div class="card-header">
+          <div class="card-icon">!</div>
+          <div class="card-label">Restricción</div>
+        </div>
+        <p>
+          El servicio de INMOBIL.IA está dirigido exclusivamente a personas mayores de
+          <strong>18 años</strong>. No recopilamos intencionalmente datos de menores de edad.
+          Si se detecta que un usuario es menor de edad, su acceso al servicio será restringido.
+        </p>
+        <p>
+          Si un representante legal considera que hemos recopilado datos de un menor de edad
+          sin su consentimiento, puede contactarnos para solicitar la eliminación inmediata
+          de dichos datos.
+        </p>
+      </div>
+    </div>
+
+    <!-- 10 -->
+    <div class="section" id="cambios">
+      <div class="section-num">10</div>
+      <h2>Cambios a esta política</h2>
+
+      <p>
+        INMOBIL.IA se reserva el derecho de actualizar esta Política de Privacidad en cualquier
+        momento. Los cambios entrarán en vigencia una vez publicados en este sitio web.
+      </p>
+
+      <ul class="lista">
+        <li>Los cambios sustanciales serán notificados con al menos <strong>15 días de anticipación</strong> a las inmobiliarias contratantes</li>
+        <li>La versión vigente siempre estará disponible en este documento con su fecha de actualización</li>
+        <li>El uso continuado del servicio tras la publicación de cambios implica aceptación de los mismos</li>
+      </ul>
+
+      <div class="data-grid" style="grid-template-columns: 1fr 1fr 1fr;">
+        <div class="data-cell">
+          <div class="data-cell-label">Versión actual</div>
+          <div class="data-cell-value">1.0</div>
+        </div>
+        <div class="data-cell">
+          <div class="data-cell-label">Fecha vigencia</div>
+          <div class="data-cell-value">Abril 2026</div>
+        </div>
+        <div class="data-cell">
+          <div class="data-cell-label">Próxima revisión</div>
+          <div class="data-cell-value">Octubre 2026</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 11 -->
+    <div class="section" id="contacto">
+      <div class="section-num">11</div>
+      <h2>Contacto</h2>
+
+      <p>
+        Para consultas relacionadas con esta Política de Privacidad, el ejercicio de derechos
+        sobre datos personales, o cualquier inquietud sobre el manejo de tu información:
+      </p>
+
+      <div class="contact-box">
+        <div style="margin-bottom: 16px;">
+          <div style="font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px;">Empresa</div>
+          <div style="font-family: 'DM Serif Display', serif; font-size: 18px; color: var(--text);">INMOBIL.IA</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div>
+            <div style="font-size: 11px; color: var(--text3); margin-bottom: 2px;">Correo electrónico</div>
+            <a href="mailto:privacidad@inmobil.ia">privacidad@inmobil.ia</a>
+          </div>
+          <div>
+            <div style="font-size: 11px; color: var(--text3); margin-bottom: 2px;">Tiempo de respuesta</div>
+            <div style="font-size: 13px; color: var(--text2);">Máximo 15 días hábiles</div>
+          </div>
+        </div>
+      </div>
+
+      <p style="margin-top: 20px; font-size: 13px;">
+        Si tu consulta está relacionada con una inmobiliaria específica que usa la plataforma,
+        te recomendamos contactar directamente a dicha inmobiliaria, ya que ella es la
+        responsable del tratamiento de tus datos en el contexto de su relación contigo.
+      </p>
+    </div>
+
+    <div class="sep"></div>
+
+    <div style="padding: 20px 0; text-align: center;">
+      <div style="font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text3); margin-bottom: 8px; letter-spacing: .08em; text-transform: uppercase;">
+        Al interactuar con cualquier chatbot de la plataforma INMOBIL.IA, el usuario acepta los términos de esta política.
+      </div>
+      <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+        <span class="tag tag-green">LORTDI Compliant</span>
+        <span class="tag tag-green">LOPDP Ecuador</span>
+        <span class="tag tag-green">WhatsApp Business API</span>
+        <span class="tag tag-red">No intermediación inmobiliaria</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  <div class="footer-brand">INMOBIL.IA</div>
+  <div class="footer-copy">© 2026 INMOBIL.IA · Todos los derechos reservados · v1.0</div>
+</footer>
+
+</body>
+</html>
