@@ -21,10 +21,6 @@ export async function POST(request: NextRequest) {
 
         const body = await request.json()
 
-
-        console.log("[Webhook POST] body length:", body.length)
-        console.log("[Webhook POST] body preview:", body.slice(0, 200))
-
         if (body.object !== "whatsapp_business_account") {
             return NextResponse.json({ error: "Evento no válido" }, { status: 400 })
         }
