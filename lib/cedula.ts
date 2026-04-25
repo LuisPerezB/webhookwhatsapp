@@ -20,7 +20,7 @@ export async function validarCedulaAPI(cedula: string): Promise<DatosCedula> {
 
         const res = await fetch(proxyUrl + targetUrl, {
             method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            headers: { "Content-Type": "application/x-www-form-urlencoded", "Origin": "'", },
             body: body.toString(),
             signal: AbortSignal.timeout(8000),
         })
